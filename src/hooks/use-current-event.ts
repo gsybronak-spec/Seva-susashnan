@@ -27,7 +27,7 @@ export function useCurrentEvent(): string | null {
   // Explicit /{district}/... — first segment. Skip global routes.
   const first = pathname.split("/").filter(Boolean)[0];
   if (!first) return null;
-  const GLOBAL = new Set(["admin", "privacy", "terms", "contact", "verify", "auth"]);
+  const GLOBAL = new Set(["admin", "privacy", "terms", "contact", "verify", "auth", "campaigns", "idcard"]);
   if (GLOBAL.has(first)) return null;
   return first.toLowerCase();
 }

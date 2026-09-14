@@ -1,15 +1,15 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarDays, MapPin, Users, ArrowRight, Megaphone } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { getCampaignBySlug, type CampaignTheme } from "@/lib/campaign.functions";
 
-// Layout route for /campaigns/$slug — renders the child route (index = the
-// campaign page, register = the campaign registration form). Kept as a plain
-// pass-through layout so nested routes always render.
-export const Route = createFileRoute("/campaigns/$slug")({
-  component: () => <Outlet />,
+export const Route = createFileRoute("/campaigns/$slug/")({
+  head: () => ({
+    meta: [{ title: `Campaign — ${BRAND.name}` }],
+  }),
+  component: CampaignPage,
 });
 
 type CampaignData = {

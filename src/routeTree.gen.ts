@@ -28,6 +28,7 @@ import { Route as CampaignsIndexRouteImport } from './routes/campaigns.index'
 import { Route as CampaignsSlugRouteImport } from './routes/campaigns.$slug'
 import { Route as VerifyCertRouteImport } from './routes/verify.$cert'
 import { Route as EventPartnerSlugRouteImport } from './routes/$event.partner.$slug'
+import { Route as CampaignsSlugIndexRouteImport } from './routes/campaigns.$slug.index'
 import { Route as CampaignsSlugRegisterRouteImport } from './routes/campaigns.$slug.register'
 import { Route as RegisterPartnerSlugRouteImport } from './routes/register.partner.$slug'
 
@@ -126,6 +127,11 @@ const EventPartnerSlugRoute = EventPartnerSlugRouteImport.update({
   path: '/partner/$slug',
   getParentRoute: () => EventRoute,
 } as any)
+const CampaignsSlugIndexRoute = CampaignsSlugIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CampaignsSlugRoute,
+} as any)
 const CampaignsSlugRegisterRoute = CampaignsSlugRegisterRouteImport.update({
   id: '/register',
   path: '/register',
@@ -159,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/$event/partner/$slug': typeof EventPartnerSlugRoute
   '/campaigns/$slug/register': typeof CampaignsSlugRegisterRoute
   '/register/partner/$slug': typeof RegisterPartnerSlugRoute
+  '/campaigns/$slug/': typeof CampaignsSlugIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -174,13 +181,13 @@ export interface FileRoutesByTo {
   '/$event/register': typeof EventRegisterRoute
   '/$event/success': typeof EventSuccessRoute
   '/admin/checkin': typeof AdminCheckinRoute
-  '/campaigns/$slug': typeof CampaignsSlugRouteWithChildren
   '/verify/$cert': typeof VerifyCertRoute
   '/$event': typeof EventIndexRoute
   '/campaigns': typeof CampaignsIndexRoute
   '/$event/partner/$slug': typeof EventPartnerSlugRoute
   '/campaigns/$slug/register': typeof CampaignsSlugRegisterRoute
   '/register/partner/$slug': typeof RegisterPartnerSlugRoute
+  '/campaigns/$slug': typeof CampaignsSlugIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -205,6 +212,7 @@ export interface FileRoutesById {
   '/$event/partner/$slug': typeof EventPartnerSlugRoute
   '/campaigns/$slug/register': typeof CampaignsSlugRegisterRoute
   '/register/partner/$slug': typeof RegisterPartnerSlugRoute
+  '/campaigns/$slug/': typeof CampaignsSlugIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -230,6 +238,7 @@ export interface FileRouteTypes {
     | '/$event/partner/$slug'
     | '/campaigns/$slug/register'
     | '/register/partner/$slug'
+    | '/campaigns/$slug/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -245,13 +254,13 @@ export interface FileRouteTypes {
     | '/$event/register'
     | '/$event/success'
     | '/admin/checkin'
-    | '/campaigns/$slug'
     | '/verify/$cert'
     | '/$event'
     | '/campaigns'
     | '/$event/partner/$slug'
     | '/campaigns/$slug/register'
     | '/register/partner/$slug'
+    | '/campaigns/$slug'
   id:
     | '__root__'
     | '/'
@@ -275,6 +284,7 @@ export interface FileRouteTypes {
     | '/$event/partner/$slug'
     | '/campaigns/$slug/register'
     | '/register/partner/$slug'
+    | '/campaigns/$slug/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -428,6 +438,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventPartnerSlugRouteImport
       parentRoute: typeof EventRoute
     }
+    '/campaigns/$slug/': {
+      id: '/campaigns/$slug/'
+      path: '/'
+      fullPath: '/campaigns/$slug/'
+      preLoaderRoute: typeof CampaignsSlugIndexRouteImport
+      parentRoute: typeof CampaignsSlugRoute
+    }
     '/campaigns/$slug/register': {
       id: '/campaigns/$slug/register'
       path: '/register'
@@ -487,10 +504,12 @@ const RegisterRouteWithChildren = RegisterRoute._addFileChildren(
 
 interface CampaignsSlugRouteChildren {
   CampaignsSlugRegisterRoute: typeof CampaignsSlugRegisterRoute
+  CampaignsSlugIndexRoute: typeof CampaignsSlugIndexRoute
 }
 
 const CampaignsSlugRouteChildren: CampaignsSlugRouteChildren = {
   CampaignsSlugRegisterRoute: CampaignsSlugRegisterRoute,
+  CampaignsSlugIndexRoute: CampaignsSlugIndexRoute,
 }
 
 const CampaignsSlugRouteWithChildren = CampaignsSlugRoute._addFileChildren(

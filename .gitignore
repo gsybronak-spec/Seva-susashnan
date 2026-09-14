@@ -39,3 +39,6 @@ dist-ssr
 # Build outputs (regenerated on deploy)
 .vercel/
 .output/
+
+# Local convenience copy of the migration for manual SQL-Editor runs (do not ship)
+supabase/RUN_IN_SQL_EDITOR__*.sql
