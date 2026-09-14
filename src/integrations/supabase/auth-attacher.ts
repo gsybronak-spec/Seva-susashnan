@@ -6,6 +6,16 @@ import { supabase } from './client'
 // the browser never attaches the bearer token to serverFn RPCs.
 export const attachSupabaseAuth = createMiddleware({ type: 'function' }).client(
   async ({ next }) => {
+    // The publishable client is only usable when its env vars are set. In an
+    // SSR pass or an environment without them, touching `supabase` would throw
+    // and 500 the whole server-function request. There is no browser session
+    // to attach in that case anyway, so skip quietly.
+    // (Mirrors the env resolution in client.ts.)
+    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
+    const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+      return next({ headers: {} })
+    }
     const { data } = await supabase.auth.getSession()
     const token = data.session?.access_token
     return next({
