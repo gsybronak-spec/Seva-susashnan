@@ -370,11 +370,26 @@ export function RegisterView({
   return (
     <div className="mx-auto max-w-2xl px-4 py-10">
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-bold text-brand-primary">Registration Form</h1>
+        <p className="kicker justify-center">Registration</p>
+        <h1 className="display-2 mt-2">{config.general.title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {config.general.title}
-          {!isMultiDistrictEvent && districtLabel ? ` · ${districtLabel} District` : ""}
+          {!isMultiDistrictEvent && districtLabel ? `${districtLabel} District` : " "}
         </p>
+        {/* trust strip — the three things every participant receives */}
+        <ul className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
+          <li className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-success" />
+            Free registration
+          </li>
+          <li className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-accent" />
+            Instant participant ID &amp; QR pass
+          </li>
+          <li className="inline-flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand-primary" />
+            Official participation certificate
+          </li>
+        </ul>
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">

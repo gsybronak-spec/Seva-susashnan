@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { BRAND } from "@/lib/brand";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
@@ -126,7 +127,13 @@ function LoginCard({ onLoggedIn }: { onLoggedIn: () => void }) {
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
         <div className="brand-bar h-1 w-full" />
         <form onSubmit={submit} className="space-y-4 p-6 sm:p-8">
-          <h1 className="text-xl font-bold text-brand-primary">Admin Panel</h1>
+          <div className="flex items-center gap-3">
+            <img src="/logo-gsyb.png" alt="" className="h-11 w-11 object-contain" />
+            <div>
+              <h1 className="text-xl font-bold text-brand-primary">Admin Panel</h1>
+              <p className="text-xs text-muted-foreground">{BRAND.name}</p>
+            </div>
+          </div>
           <p className="text-sm text-muted-foreground">
             Sign in with your admin credentials.
           </p>
@@ -760,7 +767,8 @@ function Dashboard({
       />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-brand-primary">Admin Dashboard</h1>
+          <p className="kicker">Board Operations</p>
+          <h1 className="display-2">Admin Dashboard</h1>
           <p className="text-sm text-muted-foreground">
             Signed in as <span className="font-medium">{check.username}</span>{" "}
             <span
