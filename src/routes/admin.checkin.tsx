@@ -12,6 +12,9 @@ import { checkinSearch } from "@/lib/checkin-search.server";
 import type { QrResolution } from "@/lib/checkin.functions";
 
 export const Route = createFileRoute("/admin/checkin")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    event: typeof search.event === "string" ? search.event : undefined,
+  }),
   head: () => ({
     meta: [{ title: `Check-In — ${BRAND.name}` }],
   }),
@@ -46,14 +49,16 @@ function formatTime(iso: string): string {
   }
 }
 
-function CheckinPage() {
+export function CheckinPage({ eventId }: { eventId?: string } = {}) {
   const qc = useQueryClient();
+  const search = Route.useSearch?.() as { event?: string } | undefined;
+  const activeEventId = eventId || search?.event;
   const resolveFn = useServerFn(resolveQrToken);
   const checkinFn = useServerFn(performCheckin);
   const searchFn = useServerFn(checkinSearch);
   const [state, setState] = useState<ScanState>({ kind: "idle" });
   const [manualQuery, setManualQuery] = useState("");
-  const [manualResult, setManualResult] = useState<Participant | null>(null);
+  const [manualResult, setManualResult] = useState<Participant[] | null>(null);
   const [manualMsg, setManualMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -140,7 +145,9 @@ function CheckinPage() {
   async function handleToken(token: string) {
     setBusy(true);
     try {
-      const res = (await resolveFn({ data: { token } })) as QrResolution;
+      const res = (await resolveFn({
+        data: { token, event_id: activeEventId },
+      })) as QrResolution;
       if (!res.ok) {
         setState({ kind: "error", message: res.error });
         return;
@@ -164,7 +171,7 @@ function CheckinPage() {
     setBusy(true);
     try {
       const res = await checkinFn({
-        data: { registration_number: regNumber, method },
+        data: { registration_number: regNumber, method, event_id: activeEventId },
       });
       if (!res.ok) {
         setState({ kind: "error", message: res.error });
@@ -177,6 +184,7 @@ function CheckinPage() {
       }
       void qc.invalidateQueries({ queryKey: ["admin-list"] });
       void qc.invalidateQueries({ queryKey: ["admin-stats"] });
+      void qc.invalidateQueries({ queryKey: ["admin-attendance-summary"] });
     } finally {
       setBusy(false);
     }
@@ -193,7 +201,7 @@ function CheckinPage() {
     }
     setBusy(true);
     try {
-      const res = await searchFn({ data: { q } });
+      const res = await searchFn({ data: { q, event_id: activeEventId } });
       if (!res.ok) {
         setManualMsg(res.error ?? "Search failed.");
         return;
@@ -202,7 +210,14 @@ function CheckinPage() {
         setManualMsg("No participant found. Check the spelling or try the mobile number.");
         return;
       }
-      setManualResult(res.participants as unknown as Participant);
+      setManualResult(
+        res.participants.map((p) => ({
+          registration_number: p.registration_number,
+          full_name: p.full_name,
+          district: p.district,
+          organization: null,
+        })),
+      );
     } catch {
       setManualMsg("Search failed. Please try again.");
     } finally {
@@ -346,7 +361,7 @@ function CheckinPage() {
           {manualMsg && <p className="text-xs text-muted-foreground">{manualMsg}</p>}
           {manualResult && (
             <div className="space-y-2">
-              {(Array.isArray(manualResult) ? manualResult : [manualResult]).map((p) => (
+              {manualResult.map((p) => (
                 <div
                   key={p.registration_number}
                   className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"

@@ -77,6 +77,7 @@ export const resolveQrToken = createServerFn({ method: "POST" })
       .object({
         token: z.string().trim().min(6).max(64),
         event_slug: z.string().trim().max(80).optional(),
+        event_id: z.string().uuid().optional(),
       })
       .parse(input),
   )
@@ -85,25 +86,61 @@ export const resolveQrToken = createServerFn({ method: "POST" })
     // even though the scanning UI itself is behind the admin layout.
     await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const eventId = await loadEventId(data.event_slug);
-    if (!eventId) return { ok: false, error: "Event not found." };
+    const expectedEventId = data.event_id ?? (await loadEventId(data.event_slug));
 
+    // Look up participant across registrations by unique qr_token
     const { data: reg } = await supabaseAdmin
       .from("registrations")
-      .select(SCOPED_COLUMNS)
+      .select("registration_number, full_name, mobile, gender, district, organization, qr_token, event_id")
       .eq("qr_token", data.token)
-      .eq("event_id", eventId)
       .maybeSingle();
+
     if (!reg) return { ok: false, error: "Invalid or unknown QR code." };
+
+    const regData = reg as unknown as {
+      registration_number: string;
+      full_name: string;
+      mobile: string;
+      gender: string | null;
+      district: string | null;
+      organization: string | null;
+      qr_token: string | null;
+      event_id: string;
+    };
+
+    if (expectedEventId && regData.event_id !== expectedEventId) {
+      const { data: ev } = await supabaseAdmin
+        .from("events")
+        .select("general")
+        .eq("id", regData.event_id)
+        .maybeSingle();
+      const g = (ev?.general ?? {}) as { title?: string };
+      const eventTitle = g.title ? `"${g.title}"` : "another event";
+      return {
+        ok: false,
+        error: `Participant is registered for ${eventTitle}, not this event.`,
+      };
+    }
+
+    const eventId = regData.event_id;
 
     const { data: att } = await supabaseAdmin
       .from("attendance")
       .select("check_in_time, check_in_method")
       .eq("event_id", eventId)
-      .eq("registration_number", (reg as { registration_number: string }).registration_number)
+      .eq("registration_number", regData.registration_number)
       .maybeSingle();
 
-    const participant = reg as unknown as CheckinParticipant;
+    const participant: CheckinParticipant = {
+      registration_number: regData.registration_number,
+      full_name: regData.full_name,
+      mobile: regData.mobile,
+      gender: regData.gender,
+      district: regData.district,
+      organization: regData.organization,
+      qr_token: regData.qr_token,
+    };
+
     if (att) {
       const a = att as { check_in_time: string; check_in_method: string };
       return {
@@ -126,6 +163,7 @@ export const performCheckin = createServerFn({ method: "POST" })
       .object({
         registration_number: z.string().trim().min(1).max(40),
         event_slug: z.string().trim().max(80).optional(),
+        event_id: z.string().uuid().optional(),
         method: z.enum(["qr", "manual"]).default("qr"),
         checked_in_by: z.string().trim().max(120).optional(),
       })
@@ -136,19 +174,52 @@ export const performCheckin = createServerFn({ method: "POST" })
     // never trusted — this is the Module 21 requirement enforcement point.
     const staff = await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const eventId = await loadEventId(data.event_slug);
-    if (!eventId) return { ok: false, error: "Event not found." };
+    const expectedEventId = data.event_id ?? (await loadEventId(data.event_slug));
 
-    // Locate the participant within this event only.
+    // Locate the participant by registration_number
     const { data: reg } = await supabaseAdmin
       .from("registrations")
-      .select(SCOPED_COLUMNS)
+      .select("registration_number, full_name, mobile, gender, district, organization, qr_token, event_id")
       .eq("registration_number", data.registration_number)
-      .eq("event_id", eventId)
       .maybeSingle();
-    if (!reg) return { ok: false, error: "Participant not found for this event." };
 
-    const participant = reg as unknown as CheckinParticipant;
+    if (!reg) return { ok: false, error: "Participant not found." };
+
+    const regData = reg as unknown as {
+      registration_number: string;
+      full_name: string;
+      mobile: string;
+      gender: string | null;
+      district: string | null;
+      organization: string | null;
+      qr_token: string | null;
+      event_id: string;
+    };
+
+    if (expectedEventId && regData.event_id !== expectedEventId) {
+      const { data: ev } = await supabaseAdmin
+        .from("events")
+        .select("general")
+        .eq("id", regData.event_id)
+        .maybeSingle();
+      const g = (ev?.general ?? {}) as { title?: string };
+      const eventTitle = g.title ? `"${g.title}"` : "another event";
+      return {
+        ok: false,
+        error: `Participant is registered for ${eventTitle}, not this event.`,
+      };
+    }
+
+    const eventId = regData.event_id;
+    const participant: CheckinParticipant = {
+      registration_number: regData.registration_number,
+      full_name: regData.full_name,
+      mobile: regData.mobile,
+      gender: regData.gender,
+      district: regData.district,
+      organization: regData.organization,
+      qr_token: regData.qr_token,
+    };
 
     // Insert with ON CONFLICT-free behavior: rely on the UNIQUE constraint.
     const { data: inserted, error: insertErr } = await supabaseAdmin

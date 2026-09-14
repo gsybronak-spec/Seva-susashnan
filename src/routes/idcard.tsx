@@ -14,6 +14,7 @@ export const Route = createFileRoute("/idcard")({
   validateSearch: z.object({
     reg: z.string().optional(),
     mobile: z.string().optional(),
+    event: z.string().optional(),
   }),
   head: () => ({
     meta: [{ title: `Participant ID Card — ${BRAND.name}` }],
@@ -42,30 +43,13 @@ const lookupCard = createServerFn({ method: "POST" })
         .trim()
         .regex(/^[6-9]\d{9}$/, "Enter a valid 10-digit mobile number")
         .optional(),
+      event_slug: z.string().trim().max(80).optional(),
     }),
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { resolveEvent } = await import("@/lib/event-resolver.server");
 
-    // Resolve the event by explicit slug, else the default microsite.
-    const resolved = await resolveEvent(null);
-    if (!resolved?.event?.id) return { ok: false as const, error: "Event not available." };
-    const eventId = resolved.event.id as string;
-
-    let query = supabaseAdmin
-      .from("registrations")
-      .select(
-        "registration_number, full_name, mobile, gender, district, organization, qr_token",
-      )
-      .eq("event_id", eventId)
-      .limit(1);
-    if (data.reg) query = query.eq("registration_number", data.reg.trim());
-    else if (data.mobile) query = query.eq("mobile", data.mobile.trim());
-    else return { ok: false as const, error: "Provide a registration number or mobile." };
-
-    const { data: rows } = await query;
-    const reg = (rows ?? [])[0] as
+    let reg:
       | {
           registration_number: string;
           full_name: string;
@@ -74,9 +58,61 @@ const lookupCard = createServerFn({ method: "POST" })
           district: string | null;
           organization: string | null;
           qr_token: string | null;
+          event_id: string | null;
         }
       | undefined;
+
+    if (data.reg) {
+      // Registration numbers are globally unique — query directly to preserve exact event context
+      const { data: rows } = await supabaseAdmin
+        .from("registrations")
+        .select(
+          "registration_number, full_name, mobile, gender, district, organization, qr_token, event_id",
+        )
+        .eq("registration_number", data.reg.trim())
+        .limit(1);
+      reg = (rows ?? [])[0];
+    } else if (data.mobile) {
+      let targetEventId: string | null = null;
+      if (data.event_slug) {
+        const { resolveEvent } = await import("@/lib/event-resolver.server");
+        const resolved = await resolveEvent(data.event_slug);
+        targetEventId = resolved?.event?.id ?? null;
+      }
+
+      let q = supabaseAdmin
+        .from("registrations")
+        .select(
+          "registration_number, full_name, mobile, gender, district, organization, qr_token, event_id",
+        )
+        .eq("mobile", data.mobile.trim())
+        .order("created_at", { ascending: false });
+
+      if (targetEventId) {
+        q = q.eq("event_id", targetEventId);
+      }
+
+      const { data: rows } = await q.limit(1);
+      reg = (rows ?? [])[0];
+    } else {
+      return { ok: false as const, error: "Provide a registration number or mobile." };
+    }
+
     if (!reg) return { ok: false as const, error: "Registration not found." };
+
+    // Resolve the matching event details from the registration's actual event_id
+    let eventTitle = "Yoga ane Dhyan Shibir";
+    let eventDate: string | null = null;
+    if (reg.event_id) {
+      const { data: ev } = await supabaseAdmin
+        .from("events")
+        .select("general")
+        .eq("id", reg.event_id)
+        .maybeSingle();
+      const g = (ev?.general ?? {}) as { title?: string; event_date?: string | null };
+      if (g.title) eventTitle = g.title;
+      if (g.event_date) eventDate = g.event_date;
+    }
 
     // Ensure the row has a QR token (defensive backfill).
     let token = reg.qr_token;
@@ -91,12 +127,15 @@ const lookupCard = createServerFn({ method: "POST" })
     return {
       ok: true as const,
       card: {
-        ...reg,
+        registration_number: reg.registration_number,
+        full_name: reg.full_name,
+        mobile: reg.mobile,
+        gender: reg.gender,
+        district: reg.district,
+        organization: reg.organization,
         qr_token: token,
-        event_title:
-          (resolved.event.general as { title?: string } | null)?.title ?? "Event",
-        event_date:
-          (resolved.event.general as { event_date?: string | null } | null)?.event_date ?? null,
+        event_title: eventTitle,
+        event_date: eventDate,
       } as CardData,
     };
   });

@@ -52,18 +52,18 @@ export const certificateStatus = createServerFn({ method: "POST" })
     // rules. A participant who registered but never checked in is NOT
     // eligible. When attendance enforcement is on, require the configured
     // minimum check-in count (default 1 for single-day shibirs).
-    const { data: att } = await supabaseAdmin
+    const { count } = await supabaseAdmin
       .from("attendance")
       .select("id", { count: "exact", head: true })
       .eq("registration_number", reg.registration_number)
       .eq("event_id", event.id);
-    const checkIns = att?.length ?? 0;
+    const checkIns = count ?? 0;
     const attCfg = (event.config.attendance ?? {}) as {
       enable_tracking?: boolean;
       min_percent?: number;
     };
-    const attendanceRequired = attCfg.enable_tracking !== false;
-    const minCheckIns = Math.max(1, attCfg.min_percent ?? 1);
+    const attendanceRequired = attCfg.enable_tracking !== false && cert.attendance_required !== false;
+    const minCheckIns = Math.max(1, attCfg.min_percent && attCfg.min_percent <= 10 ? attCfg.min_percent : 1);
     const joined = checkIns > 0;
     const eligible = cert.enabled && (!attendanceRequired || checkIns >= minCheckIns);
 

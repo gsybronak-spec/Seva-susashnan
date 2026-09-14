@@ -211,10 +211,11 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
               </StatusMessage>
             )}
 
-
-
-
-            {(status.issue?.status === "issued" || status.issue?.status === "approved") && (
+            {status.certificate_enabled && !status.eligible && (
+              <StatusMessage kind="warn" icon={<Award className="h-4 w-4" />}>
+                Physical attendance check-in is required to receive this certificate. No verified attendance was recorded for this registration at the event venue.
+              </StatusMessage>
+            )}            {(status.issue?.status === "issued" || status.issue?.status === "approved") && (
               <div className="mt-6 space-y-4">
                 <div className="rounded-md border border-brand-success/40 bg-brand-success/10 p-3 text-center text-sm">
                   <ShieldCheck className="mr-1 inline h-4 w-4 text-brand-success" />

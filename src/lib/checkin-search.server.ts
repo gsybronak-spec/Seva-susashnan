@@ -10,15 +10,20 @@ export const checkinSearch = createServerFn({ method: "GET" })
       .object({
         q: z.string().trim().min(1).max(120),
         event_slug: z.string().trim().max(80).optional(),
+        event_id: z.string().uuid().optional(),
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
     await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { resolveEvent } = await import("@/lib/event-resolver.server");
-    const resolved = await resolveEvent(data.event_slug ?? null);
-    if (!resolved?.event?.id) return { ok: false as const, error: "Event not found." };
+    let eventId = data.event_id;
+    if (!eventId) {
+      const { resolveEvent } = await import("@/lib/event-resolver.server");
+      const resolved = await resolveEvent(data.event_slug ?? null);
+      eventId = resolved?.event?.id;
+    }
+    if (!eventId) return { ok: false as const, error: "Event not found." };
 
     const safe = data.q.replace(/[%_\\]/g, "\\$&");
     const { data: rows, error } = await supabaseAdmin
@@ -27,7 +32,7 @@ export const checkinSearch = createServerFn({ method: "GET" })
       .or(
         `full_name.ilike.%${safe}%,mobile.ilike.%${safe}%,registration_number.ilike.%${safe}%`,
       )
-      .eq("event_id", resolved.event.id)
+      .eq("event_id", eventId)
       .limit(8);
     if (error) return { ok: false as const, error: error.message };
     return {

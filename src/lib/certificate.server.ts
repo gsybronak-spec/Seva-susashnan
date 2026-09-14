@@ -96,9 +96,10 @@ export async function nextCertNumber(fmt: CertificateNumberFormat): Promise<stri
   return `${formatCertificateNumber(fmt, base)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
-export function isEligibleForCertificate(cert: EventCertificate, _joined?: boolean) {
-  // Registration alone is sufficient — attendance must never block certificates.
-  return cert.enabled;
+export function isEligibleForCertificate(cert: EventCertificate, joined?: boolean) {
+  if (!cert.enabled) return false;
+  if (cert.attendance_required && !joined) return false;
+  return true;
 }
 
 export async function getScopedCertificateRows(input: {
@@ -254,15 +255,34 @@ export async function bulkIssueCertificates(eventId?: string) {
   );
   const existingSet = new Set(existing.map((r) => r.registration_number));
 
+  const attCfg = (event.config.attendance ?? {}) as {
+    enable_tracking?: boolean;
+    min_percent?: number;
+  };
+  const attendanceRequired = attCfg.enable_tracking !== false && cert.attendance_required !== false;
+
+  let attendedSet = new Set<string>();
+  if (attendanceRequired) {
+    const attendedRows = await fetchAllPaginated<{ registration_number: string }>(
+      "attendance",
+      "id, registration_number",
+    );
+    attendedSet = new Set(attendedRows.map((a) => a.registration_number));
+  }
+
   let issued = 0;
   let skipped = 0;
   const now = new Date().toISOString();
   
-  // Registration alone is sufficient — attendance is never checked for certificates.
+  // Issue certificates only to eligible participants (respecting attendance requirement)
   // We process sequentially because nextCertNumber performs collision checks.
   for (const r of regs) {
     if (existingSet.has(r.registration_number)) { skipped += 1; continue; }
     if (!cert.enabled) { skipped += 1; continue; }
+    if (attendanceRequired && !attendedSet.has(r.registration_number)) {
+      skipped += 1;
+      continue;
+    }
     
     const number = await nextCertNumber(cert.number_format);
     const { error } = await supabaseAdmin.from("certificate_issues").insert({
