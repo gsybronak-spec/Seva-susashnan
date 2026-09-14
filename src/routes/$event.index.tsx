@@ -1,0 +1,79 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Award, HeartPulse, Users, MapPin } from "lucide-react";
+import { useEventConfig } from "@/hooks/use-event-config";
+import { EventInfoCard } from "@/components/event-info-card";
+import { BRAND } from "@/lib/brand";
+
+export const Route = createFileRoute("/$event/")({
+  component: EventHome,
+});
+
+function EventHome() {
+  const { event: eventSlug } = Route.useParams() as { event: string };
+  const { config, districtName } = useEventConfig(eventSlug);
+  const { features, general } = config;
+
+  const displayName = districtName ?? general.title ?? eventSlug;
+
+  return (
+    <div>
+      <section className="border-b border-border bg-gradient-to-b from-accent/40 to-background">
+        <div className="mx-auto max-w-6xl px-4 py-14 sm:py-20">
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-brand-primary">
+              <MapPin className="h-3.5 w-3.5" />
+              {BRAND.name}
+            </div>
+            <h1 className="text-3xl font-bold text-brand-primary sm:text-5xl">
+              {general.title}
+            </h1>
+            <p className="mt-3 text-lg font-medium text-brand-accent sm:text-xl">
+              {general.theme}
+            </p>
+            {general.description && (
+              <p className="mx-auto mt-5 max-w-2xl text-sm text-muted-foreground sm:text-base">
+                {general.description}
+              </p>
+            )}
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              {features.registration && (
+                <Button asChild size="lg" className="h-12 px-8 text-base">
+                  <Link to="/$event/register" params={{ event: eventSlug }}>
+                    Register Now <ArrowRight className="ml-2 h-5 w-5" />
+                  </Link>
+                </Button>
+              )}
+              {features.certificate && (
+                <Button asChild size="lg" variant="outline" className="h-12 px-8 text-base">
+                  <Link to="/$event/certificate" params={{ event: eventSlug }}>Download Certificate</Link>
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <EventInfoCard config={config} />
+
+      <section className="mx-auto max-w-6xl px-4 py-12">
+        <div className="grid gap-4 sm:grid-cols-3">
+          {[
+            { icon: HeartPulse, title: "Holistic Wellbeing", text: "Simple, guided yoga and meditation practices for a healthier body and calmer mind." },
+            { icon: Users, title: "Open to All", text: `Every citizen participating in the ${displayName} shibir is welcome.` },
+            { icon: Award, title: "Participation Certificate", text: "Get an official certificate after attending the event." },
+          ].map(({ icon: Icon, title, text }) => (
+            <div key={title} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+              <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-accent text-brand-primary">
+                <Icon className="h-5 w-5" />
+              </div>
+              <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">{text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}

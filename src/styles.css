@@ -1,0 +1,117 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-foreground: var(--brand-accent-foreground);
+  --color-brand-success: var(--brand-success);
+  --color-brand-success-foreground: var(--brand-success-foreground);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-foreground: var(--brand-primary-foreground);
+  --font-sans: "Noto Sans", "Noto Sans Gujarati", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Noto Serif", ui-serif, Georgia, serif;
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /* Brand: deep teal primary + warm gold accent */
+  --brand-accent: oklch(0.76 0.15 70);            /* GSYB saffron gold (#F2A81D-ish) */
+  --brand-accent-foreground: oklch(1 0 0);
+  --brand-success: oklch(0.55 0.13 163);          /* emerald success green */
+  --brand-success-foreground: oklch(1 0 0);
+  --brand-primary: oklch(0.47 0.125 15);          /* GSYB maroon (#9F3138-ish) */
+  --brand-primary-foreground: oklch(1 0 0);
+
+  --background: oklch(0.995 0.003 95);       /* off-white paper */
+  --foreground: oklch(0.2 0.02 220);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 220);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 220);
+
+  --primary: var(--brand-primary);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.96 0.01 195);
+  --secondary-foreground: var(--brand-primary);
+  --muted: oklch(0.96 0.008 210);
+  --muted-foreground: oklch(0.45 0.02 220);
+  --accent: oklch(0.97 0.03 85);             /* soft gold tint */
+  --accent-foreground: var(--brand-primary);
+  --destructive: oklch(0.55 0.22 27);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.01 210);
+  --input: oklch(0.92 0.01 210);
+  --ring: var(--brand-primary);
+}
+
+.dark {
+  --background: oklch(0.16 0.02 220);
+  --foreground: oklch(0.98 0.005 210);
+  --card: oklch(0.2 0.02 220);
+  --card-foreground: oklch(0.98 0.005 210);
+  --popover: oklch(0.2 0.02 220);
+  --popover-foreground: oklch(0.98 0.005 210);
+  --primary: var(--brand-accent);
+  --primary-foreground: oklch(0.15 0.02 220);
+  --secondary: oklch(0.26 0.03 220);
+  --secondary-foreground: oklch(0.98 0.005 210);
+  --muted: oklch(0.26 0.03 220);
+  --muted-foreground: oklch(0.72 0.02 210);
+  --accent: oklch(0.26 0.03 220);
+  --accent-foreground: oklch(0.98 0.005 210);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: var(--brand-accent);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-serif);
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Brand accent bar used on cards & page tops */
+.brand-bar {
+  background: linear-gradient(
+    to right,
+    var(--brand-primary) 0 60%,
+    var(--brand-accent) 60% 100%
+  );
+}
