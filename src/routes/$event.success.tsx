@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { SuccessView } from "@/components/pages/success-view";
 
-const searchSchema = z.object({ reg: z.string().optional() });
+const searchSchema = z.object({ reg: z.string().optional(), key: z.string().optional() });
 
 export const Route = createFileRoute("/$event/success")({
   head: () => {
@@ -22,6 +22,6 @@ export const Route = createFileRoute("/$event/success")({
 
 function EventSuccessRoute() {
   const { event: eventSlug } = Route.useParams() as { event: string };
-  const { reg } = Route.useSearch();
-  return <SuccessView reg={reg ?? ""} eventSlug={eventSlug} />;
+  const { reg, key } = Route.useSearch();
+  return <SuccessView reg={reg ?? ""} eventSlug={eventSlug} cardAccess={key} />;
 }

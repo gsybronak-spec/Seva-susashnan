@@ -378,7 +378,7 @@ export const registerParticipant = createServerFn({ method: "POST" })
         qr_token: crypto.randomUUID().replace(/-/g, ""),
         custom_fields: cf,
       })
-      .select("registration_number")
+      .select("id, registration_number")
       .single();
 
     if (insertErr) {
@@ -394,7 +394,22 @@ export const registerParticipant = createServerFn({ method: "POST" })
       return { ok: false as const, error: "Registration failed. Please try again." };
     }
 
-    return { ok: true as const, registration_number: inserted.registration_number };
+    const { randomBytes, createHash } = await import("node:crypto");
+    const cardAccess = randomBytes(24).toString("base64url");
+    const accessHash = createHash("sha256").update(cardAccess, "utf8").digest("hex");
+
+    await (supabaseAdmin.from("event_id_cards") as any).insert({
+      event_id,
+      registration_id: inserted.id,
+      access_hash: accessHash,
+    });
+
+    return {
+      ok: true as const,
+      registration_number: inserted.registration_number,
+      card_access: cardAccess,
+      event_id,
+    };
     } catch (err) {
       console.error("[registerParticipant] fatal:", err);
       return {

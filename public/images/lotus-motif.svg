@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <radialGradient id="sunriseGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFEDD5" stop-opacity="0.95"/>
+      <stop offset="40%" stop-color="#FDE2E4" stop-opacity="0.75"/>
+      <stop offset="70%" stop-color="#FDFBF7" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FDFBF7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="lotusPetalGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#F472B6"/>
+      <stop offset="45%" stop-color="#FB7185"/>
+      <stop offset="100%" stop-color="#FCE7F3"/>
+    </linearGradient>
+    <linearGradient id="lotusCenterPetal" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#E11D48"/>
+      <stop offset="50%" stop-color="#F43F5E"/>
+      <stop offset="100%" stop-color="#FFF1F2"/>
+    </linearGradient>
+    <linearGradient id="saffronAura" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <linearGradient id="sageLeaf" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#064E3B"/>
+      <stop offset="50%" stop-color="#047857"/>
+      <stop offset="100%" stop-color="#34D399"/>
+    </linearGradient>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Ambient Sunrise Backdrop Glow -->
+  <circle cx="250" cy="250" r="230" fill="url(#sunriseGlow)"/>
+
+  <!-- Sacred Geometry Radiant Rays -->
+  <g stroke="#FBBF24" stroke-width="1" opacity="0.45" stroke-dasharray="2 4">
+    <circle cx="250" cy="250" r="200" fill="none"/>
+    <circle cx="250" cy="250" r="160" fill="none"/>
+    <circle cx="250" cy="250" r="120" fill="none" stroke="#FB7185" stroke-dasharray="3 3"/>
+  </g>
+
+  <!-- Sun Orb at Center -->
+  <circle cx="250" cy="220" r="70" fill="#FEF3C7" opacity="0.85"/>
+  <circle cx="250" cy="220" r="70" fill="none" stroke="url(#saffronAura)" stroke-width="1.5" opacity="0.7"/>
+
+  <!-- Delicately stylized Lotus Leaves / Sage Green Base -->
+  <g filter="url(#softGlow)">
+    <path d="M250 370 C190 370 140 395 120 410 C160 425 210 420 250 400 C290 420 340 425 380 410 C360 395 310 370 250 370 Z" fill="url(#sageLeaf)" opacity="0.85"/>
+  </g>
+
+  <!-- Natural Blooming Pink Lotus Petals -->
+  <!-- Outer Left Petal -->
+  <path d="M250 365 C170 340 130 280 145 220 C185 260 215 320 250 365 Z" fill="url(#lotusPetalGrad)" opacity="0.85"/>
+  <!-- Outer Right Petal -->
+  <path d="M250 365 C330 340 370 280 355 220 C315 260 285 320 250 365 Z" fill="url(#lotusPetalGrad)" opacity="0.85"/>
+
+  <!-- Mid Left Petal -->
+  <path d="M250 370 C195 330 175 250 205 180 C225 240 240 310 250 370 Z" fill="url(#lotusPetalGrad)" opacity="0.95"/>
+  <!-- Mid Right Petal -->
+  <path d="M250 370 C305 330 325 250 295 180 C275 240 260 310 250 370 Z" fill="url(#lotusPetalGrad)" opacity="0.95"/>
+
+  <!-- Central Lotus Petal -->
+  <path d="M250 375 C215 300 220 200 250 140 C280 200 285 300 250 375 Z" fill="url(#lotusCenterPetal)"/>
+  
+  <!-- Subtle Petal Spine Highlights -->
+  <path d="M250 160 Q250 270 250 370" stroke="#FFF" stroke-width="1.5" opacity="0.7" stroke-linecap="round"/>
+
+  <!-- Golden Stamen Radiance -->
+  <circle cx="250" cy="330" r="7" fill="#F59E0B"/>
+  <circle cx="238" cy="326" r="4.5" fill="#FBBF24"/>
+  <circle cx="262" cy="326" r="4.5" fill="#FBBF24"/>
+  <circle cx="228" cy="320" r="3.5" fill="#FDE68A"/>
+  <circle cx="272" cy="320" r="3.5" fill="#FDE68A"/>
+
+  <!-- Radiant Yogic Aura & Sparkling Stars -->
+  <g fill="#D97706">
+    <circle cx="250" cy="115" r="3.5"/>
+    <circle cx="210" cy="135" r="2.5" opacity="0.8"/>
+    <circle cx="290" cy="135" r="2.5" opacity="0.8"/>
+    <circle cx="170" cy="180" r="2" opacity="0.6"/>
+    <circle cx="330" cy="180" r="2" opacity="0.6"/>
+  </g>
+</svg>

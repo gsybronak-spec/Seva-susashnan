@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Copy, CheckCircle2, Share2, MessageCircle, Facebook, Link as LinkIcon, IdCard } from "lucide-react";
+import { Copy, CheckCircle2, Share2, Link as LinkIcon, Sparkles } from "lucide-react";
 import { useEventConfig } from "@/hooks/use-event-config";
 import { WhatsAppCard } from "@/components/whatsapp-card";
 import {
@@ -10,16 +10,27 @@ import {
   formatTimeRange,
   formatEventDate,
 } from "@/lib/event-config";
+import { EventIdCard } from "@/components/event-id-card";
 
-export function SuccessView({ reg, eventSlug }: { reg: string; eventSlug?: string }) {
+export function SuccessView({
+  reg,
+  eventSlug,
+  cardAccess,
+}: {
+  reg: string;
+  eventSlug?: string;
+  cardAccess?: string;
+}) {
   const { config } = useEventConfig(eventSlug ?? null);
   const [copied, setCopied] = useState<"reg" | "link" | "msg" | null>(null);
   const registerPath = eventSlug ? `/${eventSlug}/register` : "/register";
 
-  const shareUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}${registerPath}?ref=${reg}`
-      : `${registerPath}?ref=${reg}`;
+  const [shareUrl, setShareUrl] = useState(`${registerPath}?ref=${reg}`);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setShareUrl(`${window.location.origin}${registerPath}?ref=${reg}`);
+    }
+  }, [registerPath, reg]);
 
   const shareText = formatShareMessage(config.referral.share_template, {
     title: config.general.title,
@@ -41,158 +52,96 @@ export function SuccessView({ reg, eventSlug }: { reg: string; eventSlug?: strin
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
-      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="brand-bar h-1 w-full" />
-        <div className="p-6 text-center sm:p-10">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-brand-success/10 text-brand-success">
+    <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12 space-y-8">
+      {/* Registration Confirmation Card */}
+      <div className="overflow-hidden rounded-2xl border border-[#E8E0D5] bg-white shadow-sm">
+        {/* Top Tricolor Bar */}
+        <div className="h-1.5 w-full flex">
+          <div className="w-1/3 bg-[#FF9933]" />
+          <div className="w-1/3 bg-white" />
+          <div className="w-1/3 bg-[#138808]" />
+        </div>
+
+        <div className="p-6 text-center sm:p-10 space-y-4">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
             <CheckCircle2 className="h-9 w-9" />
           </div>
-          <h1 className="text-2xl font-bold text-brand-primary sm:text-3xl">
-            Registration Successful
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Thank you for registering.
-          </p>
 
-          <div className="mx-auto mt-6 max-w-md rounded-xl border border-dashed border-brand-primary/40 bg-accent/30 p-5">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              Your Participant ID
-            </div>
-            <div className="mt-1 select-all font-mono text-2xl font-bold tracking-wider text-brand-primary">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#0F3E3E] tracking-tight">
+              Registration Successful!
+            </h1>
+            <p className="mt-1 text-sm text-[#5C7065]">
+              તમારી નોંધણી સફળતાપૂર્વક પૂર્ણ થઈ ગઈ છે. તમારો સત્તાવાર પ્રવેશ પાસ નીચે ઉપલબ્ધ છે.
+            </p>
+          </div>
+
+          <div className="mx-auto max-w-sm rounded-xl border border-dashed border-[#D97706]/50 bg-[#FAF8F5] p-4 space-y-1">
+            <span className="text-[11px] uppercase tracking-wider text-[#64748B] font-bold">
+              Your Registration Number / નોંધણી નંબર
+            </span>
+            <div className="select-all font-mono text-2xl font-bold tracking-wider text-[#0F3E3E]">
               {reg}
             </div>
             <Button
               onClick={() => copy(reg, "reg")}
               variant="outline"
               size="sm"
-              className="mt-4"
+              className="mt-2 text-xs border-[#E8E0D5] text-[#0F3E3E] h-8"
             >
-              <Copy className="mr-2 h-4 w-4" />
-              {copied === "reg" ? "Copied!" : "Copy Participant ID"}
-            </Button>
-          </div>
-
-          {/* Digital ID card — the core physical-event deliverable */}
-          <div className="mx-auto mt-6 max-w-md rounded-xl border border-brand-accent/50 bg-brand-accent/5 p-5">
-            <div className="flex items-center justify-center gap-2 font-semibold text-brand-primary">
-              <IdCard className="h-5 w-5" />
-              Get Your Event ID Card
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Download your ID card with the check-in QR code. Bring it to the shibir
-              venue — show it at the check-in desk to mark your attendance.
-            </p>
-            <Button asChild className="mt-3 w-full">
-              <Link
-                to="/idcard"
-                search={{ reg, mobile: undefined }}
-              >
-                <IdCard className="mr-2 h-4 w-4" />
-                View / Download ID Card
-              </Link>
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              {copied === "reg" ? "Copied!" : "Copy Number"}
             </Button>
           </div>
         </div>
+      </div>
+
+      {/* Official Digital ID Card with signed QR Code */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 px-1">
+          <Sparkles className="w-4 h-4 text-[#D97706]" />
+          <h2 className="text-base font-bold text-[#0F3E3E]">Official Event Pass & QR</h2>
+        </div>
+        <EventIdCard
+          registrationNumber={reg}
+          cardAccess={cardAccess}
+          eventId={config.id}
+        />
       </div>
 
       <WhatsAppCard whatsapp={config.whatsapp} />
 
+      {/* Referral & Social Sharing */}
       {config.referral.enabled && (
-        <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-          <div className="p-6 sm:p-8">
-            <div className="flex items-center gap-2 text-brand-primary">
-              <Share2 className="h-5 w-5" />
-              <h2 className="text-lg font-semibold">Invite your friends to join this event</h2>
-            </div>
+        <div className="overflow-hidden rounded-2xl border border-[#E8E0D5] bg-white p-6 sm:p-8 shadow-sm space-y-4">
+          <div className="flex items-center gap-2 text-[#0F3E3E]">
+            <Share2 className="h-5 w-5 text-[#D97706]" />
+            <h3 className="text-base sm:text-lg font-bold">
+              Invite Friends & Family to the Camp
+            </h3>
+          </div>
+          <p className="text-xs text-[#5C7065]">
+            Share your personal referral link with your family and yoga enthusiasts.
+          </p>
 
-            <div className="mt-4 flex flex-col gap-2 rounded-md border border-border bg-muted/40 p-3 sm:flex-row sm:items-center">
-              <input
-                readOnly
-                value={shareUrl}
-                className="w-full bg-transparent text-sm text-foreground outline-none"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <Button size="sm" onClick={() => copy(shareUrl, "link")}>
-                <LinkIcon className="mr-2 h-4 w-4" />
-                {copied === "link" ? "Copied!" : "Copy Link"}
-              </Button>
-            </div>
-
-            <div className="mt-3 rounded-md border border-border bg-muted/20 p-3">
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Share message
-              </div>
-              <pre className="mt-1 whitespace-pre-wrap text-sm text-foreground">{shareText}</pre>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2"
-                onClick={() => copy(shareText, "msg")}
-              >
-                <Copy className="mr-2 h-4 w-4" />
-                {copied === "msg" ? "Copied!" : "Copy Message"}
-              </Button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <ShareBtn
-                icon={MessageCircle}
-                label="WhatsApp"
-                href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
-              />
-              <ShareBtn
-                icon={Facebook}
-                label="Facebook"
-                href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
-              />
-              <ShareBtn
-                icon={LinkIcon}
-                label="Copy Link"
-                onClick={() => copy(shareUrl, "link")}
-              />
-            </div>
+          <div className="flex flex-col sm:flex-row gap-2 rounded-xl border border-[#E8E0D5] bg-[#FAF8F5] p-2.5">
+            <input
+              readOnly
+              value={shareUrl}
+              className="w-full bg-transparent text-xs font-mono text-[#0F3E3E] outline-none px-2"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <Button
+              size="sm"
+              onClick={() => copy(shareUrl, "link")}
+              className="bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white text-xs whitespace-nowrap h-9"
+            >
+              <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
+              {copied === "link" ? "Copied!" : "Copy Link"}
+            </Button>
           </div>
         </div>
       )}
-
-      <div className="mt-8 text-center">
-        <Button asChild variant="outline">
-          <Link
-            to={eventSlug ? "/$event" : "/"}
-            {...(eventSlug ? { params: { event: eventSlug } } : {})}
-          >
-            Back to Home
-          </Link>
-        </Button>
-      </div>
     </div>
-  );
-}
-
-function ShareBtn({
-  icon: Icon,
-  label,
-  href,
-  onClick,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  href?: string;
-  onClick?: () => void;
-}) {
-  const cls =
-    "flex items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2.5 text-sm font-medium text-foreground transition hover:bg-muted";
-  if (href) {
-    return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className={cls}>
-        <Icon className="h-4 w-4" /> {label}
-      </a>
-    );
-  }
-  return (
-    <button type="button" onClick={onClick} className={cls}>
-      <Icon className="h-4 w-4" /> {label}
-    </button>
   );
 }

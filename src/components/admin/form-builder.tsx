@@ -39,6 +39,7 @@ import {
   type EventConfig,
   type EventForm,
 } from "@/lib/event-config";
+import { DynamicFormRenderer } from "@/components/dynamic-form-renderer";
 
 const ESSENTIAL = new Set<string>(ESSENTIAL_FIELD_KEYS);
 const BUILTIN = new Set<string>(BUILTIN_FIELD_KEYS);
@@ -738,34 +739,15 @@ function OptionsEditor({
 // -----------------------------------------------------
 // Live preview — mirrors the /register renderer
 // -----------------------------------------------------
-function evaluateVisibility(f: FormField, values: Record<string, unknown>): boolean {
-  if (!f.enabled || f.hidden) return false;
-  const rules = f.visible_if ?? [];
-  if (rules.length === 0) return true;
-  for (const r of rules) {
-    const other = values[r.field];
-    const s = Array.isArray(other) ? other.map(String) : other == null ? "" : String(other);
-    const ok = Array.isArray(s)
-      ? s.includes(r.value)
-      : r.operator === "not_equals" ? s !== r.value
-      : r.operator === "includes" ? s.includes(r.value)
-      : s === r.value;
-    if (!ok) return false;
-  }
-  return true;
-}
 
 function LivePreview({ fields }: { fields: FormField[] }) {
-  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [values, setValues] = useState<Record<string, any>>({});
   useEffect(() => {
-    const init: Record<string, unknown> = {};
+    const init: Record<string, any> = {};
     for (const f of fields) if (f.default_value) init[f.key] = f.default_value;
     setValues(init);
   }, [fields]);
-  const visible = useMemo(
-    () => fields.filter((f) => evaluateVisibility(f, values)).sort((a, b) => a.order - b.order),
-    [fields, values],
-  );
+
   return (
     <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
@@ -773,104 +755,18 @@ function LivePreview({ fields }: { fields: FormField[] }) {
         <span className="text-xs text-muted-foreground">Updates as you edit</span>
       </div>
       <div className="max-h-[70vh] space-y-4 overflow-auto rounded-md border border-dashed border-border bg-background p-4">
-        {visible.map((f) => (
-          <PreviewField key={f.key} field={f} value={values[f.key]} setValue={(v) => setValues((cur) => ({ ...cur, [f.key]: v }))} />
-        ))}
-        {visible.length === 0 && <div className="text-xs text-muted-foreground">No visible fields.</div>}
-        {visible.length > 0 && (
-          <Button className="w-full" disabled>Register (preview)</Button>
+        <DynamicFormRenderer
+          fields={fields}
+          values={values}
+          onChange={(key, val) => setValues((cur) => ({ ...cur, [key]: val }))}
+        />
+        {fields.length === 0 && <div className="text-xs text-muted-foreground">No fields configured.</div>}
+        {fields.length > 0 && (
+          <Button className="w-full mt-4" disabled>Register (preview)</Button>
         )}
       </div>
     </div>
   );
-}
-
-
-function PreviewField({ field, value, setValue }: { field: FormField; value: unknown; setValue: (v: unknown) => void }) {
-  const label = (
-    <Label className="text-sm">
-      {field.label} {field.required && <span className="text-destructive">*</span>}
-    </Label>
-  );
-  const help = field.help ? <p className="text-xs text-muted-foreground">{field.help}</p> : null;
-  const common = {
-    placeholder: field.placeholder,
-    readOnly: field.readonly,
-    value: typeof value === "string" ? value : "",
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setValue(e.target.value),
-  };
-  switch (field.type) {
-    case "textarea":
-      return <div className="space-y-1.5">{label}<Textarea {...common} rows={3} />{help}</div>;
-    case "dropdown":
-      return (
-        <div className="space-y-1.5">{label}
-          <Select value={typeof value === "string" ? value : ""} onValueChange={setValue}>
-            <SelectTrigger><SelectValue placeholder={field.placeholder} /></SelectTrigger>
-            <SelectContent>
-              {field.options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {help}
-        </div>
-      );
-    case "radio":
-      return (
-        <div className="space-y-2">{label}
-          <div className="space-y-1">
-            {field.options.map((o) => (
-              <label key={o.value} className="flex items-center gap-2 text-sm">
-                <input type="radio" name={field.key} value={o.value} checked={value === o.value} onChange={() => setValue(o.value)} disabled={field.readonly} />
-                {o.label}
-              </label>
-            ))}
-          </div>
-          {help}
-        </div>
-      );
-    case "checkbox":
-    case "multiselect": {
-      const arr = Array.isArray(value) ? (value as string[]) : [];
-      return (
-        <div className="space-y-2">{label}
-          <div className="space-y-1">
-            {field.options.map((o) => (
-              <label key={o.value} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={arr.includes(o.value)}
-                  disabled={field.readonly}
-                  onChange={(e) => {
-                    const next = e.target.checked ? [...arr, o.value] : arr.filter((x) => x !== o.value);
-                    setValue(next);
-                  }}
-                />
-                {o.label}
-              </label>
-            ))}
-          </div>
-          {help}
-        </div>
-      );
-    }
-    case "number":
-    case "date":
-    case "time":
-    case "email":
-    case "phone":
-    case "text":
-    default: {
-      const typeMap: Record<string, string> = {
-        number: "number", date: "date", time: "time", email: "email", phone: "tel", text: "text",
-      };
-      return (
-        <div className="space-y-1.5">{label}
-          <Input type={typeMap[field.type] ?? "text"} {...common} />
-          {help}
-        </div>
-      );
-    }
-  }
 }
 
 // -----------------------------------------------------

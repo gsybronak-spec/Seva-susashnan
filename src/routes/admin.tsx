@@ -39,6 +39,7 @@ import { adminAttendanceSummary } from "@/lib/checkin.functions";
 const EventSettings = lazy(() => import("@/components/admin/event-settings").then(m => ({ default: m.EventSettings })));
 const EventsManager = lazy(() => import("@/components/admin/events-manager").then(m => ({ default: m.EventsManager })));
 const CampaignsManager = lazy(() => import("@/components/admin/campaigns-manager").then(m => ({ default: m.CampaignsManager })));
+const EventOperationsDashboard = lazy(() => import("@/components/admin/event-operations-dashboard").then(m => ({ default: m.EventOperationsDashboard })));
 const LazyCheckin = lazy(() => import("@/routes/admin.checkin").then(m => ({ default: (m.CheckinPage || m.Route.options.component) as React.ComponentType<{ eventId?: string }> }))); 
 const CertificateManager = lazy(() => import("@/components/admin/certificate-manager").then(m => ({ default: m.CertificateManager })));
 const UserManager = lazy(() => import("@/components/admin/user-manager").then(m => ({ default: m.UserManager })));
@@ -938,7 +939,7 @@ function Dashboard({
           )}
         <TabsContent value="checkin" className="mt-4">
           <Suspense fallback={<TabFallback />}>
-            <LazyCheckin key={selectedEventId} eventId={eventIdArg} />
+            <EventOperationsDashboard eventId={selectedEventId || "2caae4eb-03b7-47be-98fa-a4a145867bd2"} />
           </Suspense>
         </TabsContent>
         {(isSuper || check.can_view_partners) && (

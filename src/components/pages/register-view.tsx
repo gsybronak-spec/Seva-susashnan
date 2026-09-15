@@ -1,25 +1,25 @@
-import { BRAND } from "@/lib/brand";
+﻿import { BRAND } from "@/lib/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { registerParticipant, lookupReferralCode } from "@/lib/registration.functions";
 import { partnerLookup } from "@/lib/partner.functions";
 import { useEventConfig, type EventConfigInitialData } from "@/hooks/use-event-config";
 import type { FormField } from "@/lib/event-config";
-
-type Designation = "" | "Yog Coach" | "Yog Trainer" | "Yog Sadhak";
+import { DynamicFormRenderer } from "@/components/dynamic-form-renderer";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  ShieldCheck,
+  Sparkles,
+  QrCode,
+  Award,
+  Loader2,
+  CheckCircle2,
+} from "lucide-react";
 
 export type RegisterViewProps = {
   eventSlug?: string;
@@ -40,27 +40,33 @@ export function RegisterView({
   const register = useServerFn(registerParticipant);
   const lookup = useServerFn(partnerLookup);
   const lookupRef = useServerFn(lookupReferralCode);
+
   const { config, isLoading, districtName, coverageDistricts } = useEventConfig(
     eventSlug ?? null,
     initialData,
   );
-  const [submitting, setSubmitting] = useState(false);
-  const [partnerInfo, setPartnerInfo] = useState<
-    { partner_id: string; partner_name: string; slug: string } | null
-  >(null);
-  const [partnerError, setPartnerError] = useState<string | null>(null);
 
-  // Referral state: non-blocking validation against the current event
+  const [submitting, setSubmitting] = useState(false);
+  const [partnerInfo, setPartnerInfo] = useState<{
+    partner_id: string;
+    partner_name: string;
+    slug: string;
+  } | null>(null);
+
+  // Referral state
   const [referralInfo, setReferralInfo] = useState<{
     status: "idle" | "validating" | "valid" | "invalid";
     referrerName?: string;
     message?: string;
   }>(() => (ref ? { status: "validating" } : { status: "idle" }));
 
-  const [values, setValues] = useState<Record<string, unknown>>({
+  // Dynamic form state
+  const [formValues, setFormValues] = useState<Record<string, any>>({
     ref: ref ? ref.toUpperCase() : "",
   });
+  const [formErrors, setFormErrors] = useState<Record<string, string | null>>({});
 
+  // Partner lookup
   useEffect(() => {
     if (!initialPartner) return;
     let cancelled = false;
@@ -73,17 +79,15 @@ export function RegisterView({
             partner_name: res.partner_name,
             slug: res.slug,
           });
-        } else {
-          setPartnerError(res.error);
         }
       })
-      .catch(() => setPartnerError("Could not verify partner link."));
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, [initialPartner, lookup]);
 
-  // Non-blocking background validation for referral code against THIS event
+  // Non-blocking referral check
   useEffect(() => {
     if (!ref) {
       setReferralInfo({ status: "idle" });
@@ -98,14 +102,13 @@ export function RegisterView({
             status: "valid",
             referrerName: res.full_name,
           });
-          setValues((cur) => ({ ...cur, ref: res.registration_number }));
+          setFormValues((cur) => ({ ...cur, ref: res.registration_number }));
         } else {
           setReferralInfo({
             status: "invalid",
-            message: res.message || "This referral code is not valid for this event.",
+            message: res.message || "Referral code not valid for this event.",
           });
-          // Clear values.ref so the participant can still register normally without failing
-          setValues((cur) => {
+          setFormValues((cur) => {
             const next = { ...cur };
             delete next.ref;
             return next;
@@ -124,578 +127,366 @@ export function RegisterView({
     };
   }, [ref, eventSlug, lookupRef]);
 
-  const districtLabel = useMemo(() => {
-    if (districtName && districtName.trim().length > 0) return districtName.trim();
-    if (eventSlug && eventSlug.trim().length > 0) {
-      const s = eventSlug.trim();
-      if (!/^event[-_0-9]/i.test(s) && !/-zone$/i.test(s)) {
-        return s.charAt(0).toUpperCase() + s.slice(1);
-      }
+  // Compute active event fields
+  const fields = useMemo(() => {
+    const rawFields = config.form?.fields ?? [];
+    const list: FormField[] = rawFields
+      .filter((f) => f.enabled && !f.hidden)
+      .filter((f) => !(partnerInfo && f.key === "designation"));
+
+    // If district field isn't present, add it based on coverage
+    if (!list.some((f) => f.key === "district")) {
+      list.push({
+        key: "district",
+        type: coverageDistricts && coverageDistricts.length > 0 ? "dropdown" : "text",
+        label: "District",
+        placeholder: "Select District",
+        required: true,
+        enabled: true,
+        readonly: !(coverageDistricts && coverageDistricts.length > 0),
+        unique: false,
+        hidden: false,
+        default_value: districtName || "Vadodara",
+        options: (coverageDistricts ?? []).map((d) => ({ label: d.name, value: d.id })),
+        validation: {},
+        visible_if: [],
+        builtin: true,
+        order: 6,
+        help: "District where event is organized.",
+      });
     }
-    return BRAND.regionName;
-  }, [districtName, eventSlug]);
 
-  const fields = useMemo(
-    () => {
-      const list = config.form.fields
-        .filter((f) => f.enabled)
-        .filter((f) => !(partnerInfo && f.key === "designation"));
-      if (!list.some((f) => f.key === "district")) {
-        list.push({
-          key: "district",
-          type: coverageDistricts && coverageDistricts.length > 0 ? "dropdown" : "text",
-          label: "District",
-          placeholder: "Select District",
-          required: true,
-          enabled: true,
-          readonly: !(coverageDistricts && coverageDistricts.length > 0),
-          unique: false,
-          hidden: false,
-          default_value: "",
-          options: [],
-          validation: {},
-          visible_if: [],
-          builtin: true,
-          order: 5,
-          help:
-            coverageDistricts && coverageDistricts.length > 0
-              ? "Please select your district from the options available."
-              : "District is automatically selected based on the active event.",
-        });
-      }
-      return list.sort((a, b) => a.order - b.order);
-    },
-    [config.form.fields, partnerInfo, coverageDistricts],
-  );
+    return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo]);
 
-  const [seeded, setSeeded] = useState(false);
-  if (!seeded && fields.length > 0) {
-    setValues((cur) => {
-      const next = { ...cur };
-      for (const f of fields) {
-        if (next[f.key] === undefined && f.default_value) next[f.key] = f.default_value;
+  // Initialize default values
+  useEffect(() => {
+    if (fields.length > 0) {
+      setFormValues((cur) => {
+        const next = { ...cur };
+        for (const f of fields) {
+          if (next[f.key] === undefined && f.default_value) {
+            next[f.key] = f.default_value;
+          }
+        }
+        return next;
+      });
+    }
+  }, [fields]);
+
+  function handleFieldChange(key: string, value: any) {
+    setFormValues((prev) => {
+      const next = { ...prev, [key]: value };
+      // If participant_type changed and is not Yog Trainer, clear coach_name
+      if (key === "participant_type" && value !== "Yog Trainer") {
+        delete next.coach_name;
       }
       return next;
     });
-    setSeeded(true);
+
+    // Clear error on change
+    if (formErrors[key]) {
+      setFormErrors((prev) => ({ ...prev, [key]: null }));
+    }
   }
 
-  function setV(key: string, val: unknown) {
-    setValues((cur) => ({ ...cur, [key]: val }));
-  }
-  function get(key: string): string {
-    const v = values[key];
-    return typeof v === "string" ? v : v == null ? "" : String(v);
-  }
+  function validateForm(): boolean {
+    const errors: Record<string, string> = {};
 
-  function validateField(f: FormField, v: unknown): string | null {
-    const s = typeof v === "string" ? v : v == null ? "" : String(v);
-    const isEmpty = s.trim() === "" || (Array.isArray(v) && v.length === 0);
-    if (f.key === "district") {
-      if (coverageDistricts && coverageDistricts.length > 0) {
-        if (isEmpty) return "Please select your district.";
+    for (const field of fields) {
+      if (!field.enabled || field.hidden) continue;
+
+      // Check conditional visibility
+      if (field.visible_if && field.visible_if.length > 0) {
+        const isVisible = field.visible_if.every((rule) => {
+          const parentVal = formValues[rule.field];
+          const strParent = parentVal == null ? "" : String(parentVal).trim();
+          const strRule = String(rule.value).trim();
+          if (rule.operator === "equals") return strParent.toLowerCase() === strRule.toLowerCase();
+          if (rule.operator === "not_equals") return strParent.toLowerCase() !== strRule.toLowerCase();
+          return true;
+        });
+        if (!isVisible) continue;
       }
-      return null;
-    }
-    if (f.required && isEmpty) return f.validation.message || `${f.label} is required.`;
-    if (isEmpty) return null;
-    const { min, max, pattern } = f.validation;
-    const isNumeric = f.type === "number";
-    if (isNumeric) {
-      const n = Number(s);
-      if (Number.isFinite(n)) {
-        if (min != null && n < min) return f.validation.message || `${f.label} must be at least ${min}.`;
-        if (max != null && n > max) return f.validation.message || `${f.label} must be at most ${max}.`;
+
+      const val = formValues[field.key];
+      const strVal = val == null ? "" : String(val).trim();
+
+      if (field.required && !strVal) {
+        errors[field.key] = field.validation?.message || `${field.label} is required.`;
+        continue;
       }
-    } else if (typeof s === "string") {
-      if (min != null && s.length < min) return f.validation.message || `${f.label} must be at least ${min} characters.`;
-      if (max != null && s.length > max) return f.validation.message || `${f.label} must be at most ${max} characters.`;
+
+      if (strVal && (field.type === "phone" || field.key === "mobile")) {
+        if (!/^[6-9]\d{9}$/.test(strVal)) {
+          errors[field.key] = "Enter a valid 10-digit Indian mobile number.";
+        }
+      }
+
+      if (strVal && (field.type === "email" || field.key === "email")) {
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(strVal)) {
+          errors[field.key] = "Enter a valid email address.";
+        }
+      }
+
+      if (strVal && field.key === "participant_type") {
+        if (!["Yog Coach", "Yog Trainer", "Yog Sadhak"].includes(strVal)) {
+          errors[field.key] = "Invalid option. Select Yog Coach, Yog Trainer, or Yog Sadhak.";
+        }
+      }
     }
-    if (pattern) {
-      try { if (!new RegExp(pattern).test(s)) return f.validation.message || `${f.label} is invalid.`; } catch { /* ignore bad regex */ }
-    }
-    return null;
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
   }
 
-  function fieldVisible(f: FormField): boolean {
-    if (!f.enabled || f.hidden) return false;
-    const rules = f.visible_if ?? [];
-    if (rules.length === 0) return true;
-    for (const r of rules) {
-      const other = values[r.field];
-      const otherStr = Array.isArray(other) ? other.map(String) : other == null ? "" : String(other);
-      const targetVal = String(r.value ?? "").trim().toLowerCase();
-      const match = Array.isArray(otherStr)
-        ? otherStr.map((s) => s.trim().toLowerCase()).includes(targetVal)
-        : r.operator === "not_equals"
-        ? otherStr.trim().toLowerCase() !== targetVal
-        : r.operator === "includes"
-        ? otherStr.trim().toLowerCase().includes(targetVal)
-        : otherStr.trim().toLowerCase() === targetVal;
-      if (!match) return false;
-    }
-    return true;
-  }
-
-  async function onSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    for (const f of fields) {
-      if (!fieldVisible(f) && f.type !== "hidden") continue;
-      const err = validateField(f, values[f.key]);
-      if (err) { toast.error(err); return; }
-    }
-
-    if (coverageDistricts && coverageDistricts.length > 0) {
-      const selectedDistrict = typeof values.district === "string" ? values.district.trim() : "";
-      if (!selectedDistrict) {
-        toast.error("Please select your district.");
-        return;
-      }
-      if (!coverageDistricts.some((d) => d.id === selectedDistrict)) {
-        toast.error("Please select a valid district from the options available.");
-        return;
-      }
-    }
-
-    const isOn = (key: string) => fields.some((f) => f.key === key && f.enabled);
-
-    const full_name = get("full_name").trim();
-    const mobile = get("mobile").replace(/\D/g, "");
-    const email = get("email").trim();
-    const organization = get("organization").trim();
-    const taluka = get("taluka").trim();
-    const designation = get("designation").trim() as Designation;
-    const gender = get("gender").trim();
-    const date_of_birth = get("date_of_birth").trim();
-    const refTrimmed = get("ref").trim().toUpperCase();
-
-    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-      toast.error("Please enter a valid email address.");
+    if (!validateForm()) {
+      toast.error("Please fill in all required fields accurately.");
       return;
     }
 
-    if (!/^[6-9]\d{9}$/.test(mobile)) {
-      toast.error("Enter a valid 10-digit Indian mobile number.");
-      return;
-    }
-    if (
-      isOn("designation") &&
-      designation &&
-      !["Yog Coach", "Yog Trainer", "Yog Sadhak"].includes(designation)
-    ) {
-      toast.error("Please select a valid designation (Yog Coach, Yog Trainer, or Yog Sadhak).");
-      return;
-    }
-    const participantTypeVal = typeof values.participant_type === "string" ? values.participant_type.trim() : "";
-    if (participantTypeVal && !["Yog Coach", "Yog Trainer", "Yog Sadhak"].includes(participantTypeVal)) {
-      toast.error("Please select a valid Participant Type: Yog Coach, Yog Trainer, or Yog Sadhak.");
-      return;
-    }
-    if (participantTypeVal === "Yog Trainer") {
-      const coach = typeof values.coach_name === "string" ? values.coach_name.trim() : "";
-      if (!coach) {
-        toast.error("Coach Name is required for Yog Trainers.");
-        return;
-      }
-    }
-    const zoneVal = typeof values.zone === "string" ? values.zone.trim() : "";
-    if (zoneVal && !["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Gramya / Rural"].includes(zoneVal)) {
-      toast.error("Please select a valid Zone: Zone 1, Zone 2, Zone 3, Zone 4, or Gramya / Rural.");
-      return;
-    }
-    const coordVal = typeof values.coordinator_name === "string" ? values.coordinator_name.trim() : "";
-    if (fields.some((f) => f.key === "coordinator_name") && !coordVal) {
-      toast.error("Coordinator Name is required.");
-      return;
-    }
-    if (isOn("gender") && gender && !["Male", "Female"].includes(gender)) {
-      toast.error("Please select a valid gender (Male or Female).");
-      return;
-    }
-    if (isOn("date_of_birth") && date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(date_of_birth)) {
-      toast.error("Please enter a valid date of birth.");
-      return;
-    }
+    const fullName = String(formValues.full_name || "").trim();
+    const mobile = String(formValues.mobile || "").replace(/\D/g, "");
+    const email = formValues.email ? String(formValues.email).trim() : undefined;
+    const organization = formValues.organization ? String(formValues.organization).trim() : undefined;
+    const taluka = formValues.taluka ? String(formValues.taluka).trim() : undefined;
+    const gender = formValues.gender && ["Male", "Female"].includes(formValues.gender) ? formValues.gender : undefined;
+    const dob = formValues.date_of_birth ? String(formValues.date_of_birth).trim() : undefined;
+    const designation = formValues.participant_type || formValues.designation || undefined;
+    const refCodeVal = formValues.ref ? String(formValues.ref).trim().toUpperCase() : undefined;
 
-    // Process referral code gracefully: an invalid or cross-event referral
-    // MUST NEVER block the participant from completing registration.
-    let finalRef: string | undefined = undefined;
-    if (refTrimmed) {
-      if (referralInfo.status === "invalid") {
-        // Referral was invalid or belongs to another event: ignore attribution safely
-        finalRef = undefined;
-      } else if (/^SYB[A-Z0-9_-]{4,}$/i.test(refTrimmed)) {
-        finalRef = refTrimmed;
-      }
-    }
-
-    const builtin = new Set(["full_name", "mobile", "email", "gender", "date_of_birth", "district", "taluka", "organization", "designation", "ref"]);
+    // Separate builtin vs custom_fields
+    const builtinKeys = new Set([
+      "full_name",
+      "mobile",
+      "email",
+      "organization",
+      "taluka",
+      "gender",
+      "date_of_birth",
+      "designation",
+      "district",
+      "ref",
+    ]);
 
     const custom_fields: Record<string, unknown> = {};
-    for (const f of fields) {
-      if (builtin.has(f.key)) continue;
-      const v = values[f.key];
-      if (v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0)) {
-        custom_fields[f.key] = v;
+    for (const [k, v] of Object.entries(formValues)) {
+      if (!builtinKeys.has(k) && v !== undefined && v !== "") {
+        custom_fields[k] = v;
       }
     }
 
-    // Coach name is strictly ONLY applicable for Yog Trainer
-    if (participantTypeVal !== "Yog Trainer") {
-      delete custom_fields.coach_name;
+    // Always preserve participant_type in custom_fields for card display
+    if (formValues.participant_type) {
+      custom_fields.participant_type = formValues.participant_type;
+    }
+    if (formValues.zone) {
+      custom_fields.zone = formValues.zone;
+    }
+    if (formValues.coach_name) {
+      custom_fields.coach_name = formValues.coach_name;
+    }
+    if (formValues.coordinator_name) {
+      custom_fields.coordinator_name = formValues.coordinator_name;
     }
 
     setSubmitting(true);
-    const timeoutPromise = new Promise<{ ok: false; error: string }>((resolve) =>
-      setTimeout(
-        () => resolve({ ok: false, error: "Registration is taking longer than usual. Please try again." }),
-        15_000,
-      ),
-    );
-
     try {
-      const res = await Promise.race([
-        register({
-          data: {
-            full_name,
-            mobile,
-            email: email || undefined,
-            organization: organization || undefined,
-            taluka: taluka || undefined,
-            gender: isOn("gender") && (gender === "Male" || gender === "Female")
-              ? gender
+      const res = await register({
+        data: {
+          full_name: fullName,
+          mobile,
+          email,
+          organization,
+          taluka,
+          gender,
+          date_of_birth: dob,
+          designation,
+          ref: refCodeVal,
+          partner_slug: partnerInfo ? partnerInfo.slug : undefined,
+          district_slug: eventSlug || undefined,
+          district_id:
+            coverageDistricts && coverageDistricts.length > 0 && typeof formValues.district === "string"
+              ? formValues.district
               : undefined,
-            date_of_birth: isOn("date_of_birth") && date_of_birth ? date_of_birth : undefined,
-            designation: partnerInfo
-              ? undefined
-              : (participantTypeVal || (isOn("designation") && designation ? designation : undefined)),
-            ref: finalRef,
-            partner_slug: partnerInfo ? partnerInfo.slug : undefined,
-            district_slug: eventSlug || undefined,
-            district_id: coverageDistricts && coverageDistricts.length > 0 && typeof values.district === "string" ? values.district : undefined,
-            custom_fields: Object.keys(custom_fields).length ? custom_fields : undefined,
-          },
-        }),
-        timeoutPromise,
-      ]);
+          custom_fields: Object.keys(custom_fields).length ? custom_fields : undefined,
+        },
+      });
 
       if (!res.ok) {
-        toast.error(res.error);
+        toast.error(res.error || "Registration could not be completed.");
         return;
       }
-      // Physical check-in flow: after registering, send the participant to
-      // the success page which links to their ID card for the venue.
+
+      // Save card access token in sessionStorage for refresh resilience
+      if (typeof window !== "undefined" && res.card_access) {
+        try {
+          window.sessionStorage.setItem(`gsyb_card_access:${res.registration_number}`, res.card_access);
+        } catch {}
+      }
+
+      toast.success("Registration completed successfully!");
+
       const successPath = eventSlug ? `/${eventSlug}/success` : "/success";
-      navigate({ to: successPath, search: { reg: res.registration_number } });
+      navigate({
+        to: successPath,
+        search: {
+          reg: res.registration_number,
+          key: res.card_access,
+        },
+      });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong.");
+      console.error("Registration submit error:", err);
+      toast.error("Registration failed. Please check your connection and try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  const isMultiDistrictEvent = !!(coverageDistricts && coverageDistricts.length > 0);
+  const eventTitle = config.general?.title || "Gujarat State Yog Board Camp";
+  const eventDate = config.general?.event_date || "20 September 2026";
+  const eventTime =
+    config.general?.start_time && config.general?.end_time
+      ? `${config.general.start_time} – ${config.general.end_time}`
+      : "06:00 AM – 08:00 AM";
+  const venue =
+    config.venue ||
+    (config.general as any)?.venue_address ||
+    "Railway Police Parade Ground, Kothi Kacheri Char Rasta, Vadodara";
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <div className="mb-6 text-center">
-        <p className="kicker justify-center">Registration</p>
-        <h1 className="display-2 mt-2">{config.general.title}</h1>
-        <p className="mt-2 text-sm font-semibold text-brand-primary">
-          Sunday, 20 September 2026 • 6:00 AM to 8:00 AM
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Venue: {config.venue || (config.general as any).venue || "Railway Police Parade Ground, Kothi Kacheri Char Rasta, Behind Kothi Kacheri, Vadodara, Gujarat"}
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {!isMultiDistrictEvent && districtLabel ? `${districtLabel} District` : " "}
-        </p>
-        {/* trust strip — the three things every participant receives */}
-        <ul className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
-          <li className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-success" />
-            Free registration
-          </li>
-          <li className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-accent" />
-            Instant participant ID &amp; QR pass
-          </li>
-          <li className="inline-flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-brand-primary" />
-            Official participation certificate
-          </li>
-        </ul>
+    <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] py-6 sm:py-10 px-4 sm:px-6 relative overflow-hidden">
+      {/* Decorative Natural Lotus Motif Background */}
+      <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 sm:w-96 h-80 sm:h-96 pointer-events-none opacity-40 z-0">
+        <img
+          src="/images/lotus-motif.svg"
+          alt=""
+          className="w-full h-full object-contain"
+          aria-hidden="true"
+        />
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="brand-bar h-1 w-full" />
-        <form onSubmit={onSubmit} className="space-y-5 p-6 sm:p-8">
-          {ref && referralInfo.status === "valid" && (
-            <div className="rounded-md bg-accent/60 px-3 py-2 text-xs text-brand-primary">
-              Referred by <span className="font-semibold">{referralInfo.referrerName || ref.toUpperCase()}</span> ({ref.toUpperCase()})
-            </div>
-          )}
+      <div className="max-w-xl mx-auto space-y-6 relative z-10">
+        {/* Authority Header & Branding */}
+        <div className="text-center space-y-3 pt-2">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FAF8F5] border border-[#E8E0D5] text-[#0F3E3E] text-xs font-semibold shadow-xs">
+            <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
+            <span>ગુજરાત રાજ્ય યોગ બોર્ડ • સત્તાવાર પોર્ટલ</span>
+          </div>
 
-          {ref && referralInfo.status === "validating" && (
-            <div className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-brand-primary animate-pulse" />
-              Verifying referral code {ref.toUpperCase()}…
-            </div>
-          )}
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#0F3E3E] tracking-tight leading-tight">
+            {eventTitle}
+          </h1>
 
-          {ref && referralInfo.status === "invalid" && (
-            <div className="rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
-              {referralInfo.message || "Referral code is not valid for this event. You can still complete your registration below."}
-            </div>
-          )}
+          <p className="text-xs sm:text-sm font-medium text-[#4E7D66]">
+            રમતગમત, યુવા અને સાંસ્કૃતિક પ્રવૃત્તિઓ વિભાગ, ગુજરાત સરકાર
+          </p>
+        </div>
 
-          {initialPartner && partnerError && (
-            <div className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              {partnerError}
+        {/* Event Logistics Quick Card */}
+        <div className="p-4 sm:p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-[#E8E0D5] shadow-sm space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="flex items-start gap-2.5">
+              <Calendar className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-[#0F3E3E]">તારીખ / Date</p>
+                <p className="text-[#5C7065]">{eventDate} (રવિવાર)</p>
+              </div>
             </div>
-          )}
 
-          {partnerInfo && (
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Partner</Label>
-              <Input value={partnerInfo.partner_name} disabled readOnly />
-              <p className="text-xs text-muted-foreground">
-                Registering through partner link ({partnerInfo.slug}).
+            <div className="flex items-start gap-2.5">
+              <Clock className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-[#0F3E3E]">સમય / Time</p>
+                <p className="text-[#5C7065]">{eventTime}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2.5 pt-2 border-t border-[#E8E0D5] text-xs">
+            <MapPin className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-[#0F3E3E]">સ્થળ / Venue</p>
+              <p className="text-[#5C7065] leading-relaxed">{venue}</p>
+            </div>
+          </div>
+
+          {/* 3 Participant Guarantees */}
+          <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#4E7D66] font-medium">
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> નિઃશુલ્ક પ્રવેશ
+            </span>
+            <span className="flex items-center gap-1">
+              <QrCode className="w-3.5 h-3.5 text-[#D97706]" /> ડિજિટલ QR પાસ
+            </span>
+            <span className="flex items-center gap-1">
+              <Award className="w-3.5 h-3.5 text-purple-600" /> ઇ-પ્રમાણપત્ર
+            </span>
+          </div>
+        </div>
+
+        {/* Main Registration Card */}
+        <div className="rounded-2xl bg-white border border-[#E8E0D5] shadow-lg overflow-hidden">
+          {/* Top Indian Tricolor Stripe */}
+          <div className="h-1.5 w-full flex">
+            <div className="w-1/3 bg-[#FF9933]" />
+            <div className="w-1/3 bg-white" />
+            <div className="w-1/3 bg-[#138808]" />
+          </div>
+
+          <div className="p-6 sm:p-8 space-y-6">
+            <div className="border-b border-[#E8E0D5] pb-4">
+              <h2 className="text-lg font-bold text-[#0F3E3E]">
+                સહભાગી નોંધણી ફોર્મ / Registration Form
+              </h2>
+              <p className="text-xs text-[#5C7065] mt-0.5">
+                કૃપા કરીને નીચે આપેલ માહિતી ધ્યાનપૂર્વક ભરો. (Fields marked with * are required)
               </p>
             </div>
-          )}
 
-          {/* Until this event's own form definition has loaded we must not
-              render the built-in default fields: doing so briefly showed a
-              generic locked "District" field that does not belong to this
-              event. Show a neutral placeholder instead. */}
-          {isLoading ? (
-            <div className="space-y-4" aria-busy="true">
-              <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-              <div className="h-10 w-full animate-pulse rounded bg-muted" />
-              <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-              <div className="h-10 w-full animate-pulse rounded bg-muted" />
-              <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-              <div className="h-10 w-full animate-pulse rounded bg-muted" />
-              <p className="text-sm text-muted-foreground">Loading registration form…</p>
-            </div>
-          ) : (
-            fields.filter(fieldVisible).map((f) => (
-              <FieldRenderer
-                key={f.key}
-                field={f}
-                value={values[f.key]}
-                setValue={(v) => setV(f.key, v)}
-                refLocked={!!ref && f.key === "ref" && referralInfo.status === "valid"}
-                districtLabel={districtLabel}
-                coverageDistricts={coverageDistricts}
-                refStatus={referralInfo.status}
+            {/* Referral Info Banner */}
+            {ref && referralInfo.status === "valid" && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>
+                  Referred by <strong>{referralInfo.referrerName || ref.toUpperCase()}</strong> ({ref.toUpperCase()})
+                </span>
+              </div>
+            )}
+
+            {/* Dynamic Form Engine */}
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <DynamicFormRenderer
+                fields={fields}
+                values={formValues}
+                onChange={handleFieldChange}
+                errors={formErrors}
+                disabled={submitting}
               />
-            ))
-          )}
 
-          <Button type="submit" size="lg" disabled={submitting || isLoading} className="h-12 w-full text-base">
-            {submitting ? "Registering..." : "Register"}
-          </Button>
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="w-full h-12 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-bold rounded-xl shadow-md text-sm gap-2 transition-all"
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-4 h-4" />
+                )}
+                <span>{submitting ? "નોંધણી થઈ રહી છે..." : "Complete Registration / નોંધણી કરો"}</span>
+              </Button>
 
-        </form>
+              <p className="text-[11px] text-center text-[#64748B]">
+                નોંધણી પૂર્ણ કર્યા પછી તમને તાત્કાલિક તમારો ડિજિટલ ID કાર્ડ અને પ્રવેશ QR કોડ મળશે.
+              </p>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );
-}
-
-function FieldRenderer({
-  field, value, setValue, refLocked, districtLabel, coverageDistricts, refStatus,
-}: {
-  field: FormField;
-  value: unknown;
-  setValue: (v: unknown) => void;
-  refLocked: boolean;
-  districtLabel: string;
-  coverageDistricts?: { id: string; slug: string; name: string }[] | null;
-  refStatus?: "idle" | "validating" | "valid" | "invalid";
-}) {
-  if (field.hidden || field.type === "hidden") return null;
-
-  const label = (
-    <Label className="text-sm font-medium">
-      {field.label} {field.required && <span className="text-destructive">*</span>}
-    </Label>
-  );
-  const help = field.help ? <p className="text-xs text-muted-foreground">{field.help}</p> : null;
-
-  if (field.key === "district") {
-    if (coverageDistricts && coverageDistricts.length > 0) {
-      return (
-        <div className="space-y-1.5">{label}
-          <Select value={typeof value === "string" ? value : ""} onValueChange={(v) => setValue(v)}>
-            <SelectTrigger><SelectValue placeholder="Select District" /></SelectTrigger>
-            <SelectContent>
-              {coverageDistricts.map((d) => (
-                <SelectItem key={d.id} value={d.id}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Please select your district from the options available.
-          </p>
-        </div>
-      );
-    }
-    return (
-      <div className="space-y-1.5">{label}
-        <Input value={districtLabel} disabled readOnly />
-        <p className="text-xs text-muted-foreground">
-          District is automatically selected based on the active event.
-        </p>
-      </div>
-    );
-  }
-
-
-  if (field.key === "mobile") {
-    return (
-      <div className="space-y-1.5">{label}
-        <Input
-          required={field.required}
-          inputMode="numeric"
-          pattern="[6-9][0-9]{9}"
-          value={typeof value === "string" ? value : ""}
-          onChange={(e) => setValue(e.target.value.replace(/\D/g, "").slice(0, 10))}
-          placeholder={field.placeholder}
-          readOnly={field.readonly}
-        />
-        {help}
-      </div>
-    );
-  }
-
-  if (field.key === "ref") {
-    let statusHelp = help;
-    if (refLocked && refStatus === "valid") {
-      statusHelp = <p className="text-xs text-brand-primary">Auto-filled from your verified invitation link.</p>;
-    } else if (refStatus === "invalid") {
-      statusHelp = (
-        <p className="text-xs text-amber-700 dark:text-amber-300">
-          Referral code was not valid for this event. You can leave this blank or enter another code.
-        </p>
-      );
-    } else if (refStatus === "validating") {
-      statusHelp = <p className="text-xs text-muted-foreground">Verifying invitation code…</p>;
-    }
-    return (
-      <div className="space-y-1.5">{label}
-        <Input
-          value={typeof value === "string" ? value : ""}
-          onChange={(e) => setValue(e.target.value.toUpperCase().slice(0, 16))}
-          placeholder={field.placeholder}
-          readOnly={refLocked || field.readonly}
-        />
-        {statusHelp}
-      </div>
-    );
-  }
-
-  switch (field.type) {
-    case "textarea":
-      return (
-        <div className="space-y-1.5">{label}
-          <Textarea
-            required={field.required}
-            value={typeof value === "string" ? value : ""}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder={field.placeholder}
-            readOnly={field.readonly}
-          />
-          {help}
-        </div>
-      );
-    case "dropdown":
-      return (
-        <div className="space-y-1.5">{label}
-          <Select value={typeof value === "string" ? value : ""} onValueChange={(v) => setValue(v)} disabled={field.readonly}>
-            <SelectTrigger><SelectValue placeholder={field.placeholder} /></SelectTrigger>
-            <SelectContent>
-              {field.options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          {help}
-        </div>
-      );
-    case "radio":
-      return (
-        <div className="space-y-2">{label}
-          <div className="flex flex-wrap gap-4 pt-1">
-            {field.options.map((o) => (
-              <label key={o.value} className="flex cursor-pointer items-center gap-2 text-sm text-foreground hover:text-brand-primary">
-                <input
-                  type="radio"
-                  name={field.key}
-                  value={o.value}
-                  checked={value === o.value}
-                  onChange={() => setValue(o.value)}
-                  disabled={field.readonly}
-                  className="h-4 w-4 text-brand-primary focus:ring-brand-primary"
-                />
-                <span>{o.label}</span>
-              </label>
-            ))}
-          </div>
-          {help}
-        </div>
-      );
-    case "checkbox":
-    case "multiselect": {
-      const arr = Array.isArray(value) ? (value as string[]) : [];
-      return (
-        <div className="space-y-2">{label}
-          <div className="space-y-1">
-            {field.options.map((o) => (
-              <label key={o.value} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={arr.includes(o.value)}
-                  disabled={field.readonly}
-                  onChange={(e) => {
-                    const next = e.target.checked ? [...arr, o.value] : arr.filter((x) => x !== o.value);
-                    setValue(next);
-                  }}
-                />
-                {o.label}
-              </label>
-            ))}
-          </div>
-          {help}
-        </div>
-      );
-    }
-    case "number":
-    case "date":
-    case "time":
-    case "email":
-    case "phone":
-    case "text":
-    default: {
-      const typeMap: Record<string, string> = {
-        number: "number", date: "date", time: "time", email: "email", phone: "tel", text: "text",
-      };
-      return (
-        <div className="space-y-1.5">{label}
-          <Input
-            type={typeMap[field.type] ?? "text"}
-            required={field.required}
-            value={typeof value === "string" ? value : value == null ? "" : String(value)}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder={field.placeholder}
-            readOnly={field.readonly}
-            maxLength={field.type === "text" ? 500 : undefined}
-          />
-          {help}
-        </div>
-      );
-    }
-  }
 }
