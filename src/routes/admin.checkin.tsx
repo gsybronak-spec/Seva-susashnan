@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { BRAND } from "@/lib/brand";
 import { resolveQrToken, performCheckin } from "@/lib/checkin.functions";
 import { checkinSearch } from "@/lib/checkin-search.server";
-import type { QrResolution } from "@/lib/checkin.functions";
+import type { QrResolution, CheckinParticipant } from "@/lib/checkin.functions";
 
 export const Route = createFileRoute("/admin/checkin")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -21,12 +21,7 @@ export const Route = createFileRoute("/admin/checkin")({
   component: CheckinPage,
 });
 
-type Participant = {
-  registration_number: string;
-  full_name: string;
-  district: string | null;
-  organization: string | null;
-};
+type Participant = CheckinParticipant;
 
 type ScanState =
   | { kind: "idle" }
@@ -214,8 +209,16 @@ export function CheckinPage({ eventId }: { eventId?: string } = {}) {
         res.participants.map((p) => ({
           registration_number: p.registration_number,
           full_name: p.full_name,
+          mobile: p.mobile,
+          gender: null,
           district: p.district,
+          taluka: p.taluka,
+          zone: p.zone,
+          participant_type: p.participant_type,
+          coach_name: p.coach_name,
+          coordinator_name: p.coordinator_name,
           organization: null,
+          qr_token: null,
         })),
       );
     } catch {
@@ -274,6 +277,7 @@ export function CheckinPage({ eventId }: { eventId?: string } = {}) {
                   </div>
                   <h2 className="text-lg font-bold">{res.participant.full_name}</h2>
                   <p className="font-mono text-sm text-muted-foreground">{res.participant.registration_number}</p>
+                  <ParticipantBadges p={res.participant} />
                   {!res.checkedIn ? (
                     <Button
                       size="lg"
@@ -298,7 +302,8 @@ export function CheckinPage({ eventId }: { eventId?: string } = {}) {
                   <h2 className="text-lg font-bold text-brand-success">Checked In ✓</h2>
                   <p className="mt-1 font-semibold">{res.participant.full_name}</p>
                   <p className="font-mono text-sm text-muted-foreground">{res.participant.registration_number}</p>
-                  <p className="mt-1 flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                  <ParticipantBadges p={res.participant} />
+                  <p className="mt-2 flex items-center justify-center gap-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" /> {formatTime(res.time)}
                   </p>
                 </>
@@ -311,7 +316,8 @@ export function CheckinPage({ eventId }: { eventId?: string } = {}) {
                   <h2 className="text-lg font-bold text-brand-accent">Attendance already recorded</h2>
                   <p className="mt-1 font-semibold">{res.participant.full_name}</p>
                   <p className="font-mono text-sm text-muted-foreground">{res.participant.registration_number}</p>
-                  <p className="mt-1 flex items-center justify-center gap-1 text-xs text-muted-foreground">
+                  <ParticipantBadges p={res.participant} />
+                  <p className="mt-2 flex items-center justify-center gap-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" /> previously at {formatTime(res.time)}
                   </p>
                 </>
@@ -366,9 +372,26 @@ export function CheckinPage({ eventId }: { eventId?: string } = {}) {
                   key={p.registration_number}
                   className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
                 >
-                  <div>
-                    <div className="font-medium">{p.full_name}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-foreground">{p.full_name}</div>
                     <div className="font-mono text-xs text-muted-foreground">{p.registration_number}</div>
+                    <div className="mt-1 flex flex-wrap gap-1 text-[11px]">
+                      {p.participant_type && (
+                        <span className="rounded bg-brand-primary/10 px-1.5 py-0.2 text-brand-primary font-medium">
+                          {p.participant_type}
+                        </span>
+                      )}
+                      {p.zone && (
+                        <span className="rounded bg-amber-100 px-1.5 py-0.2 text-amber-800 font-medium">
+                          Zone: {p.zone}
+                        </span>
+                      )}
+                      {p.taluka && (
+                        <span className="rounded bg-slate-100 px-1.5 py-0.2 text-slate-700">
+                          {p.taluka}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <Button size="sm" disabled={busy} onClick={() => doCheckin(p.registration_number, "manual")}>
                     <UserCheck className="mr-1 h-4 w-4" />
@@ -380,6 +403,38 @@ export function CheckinPage({ eventId }: { eventId?: string } = {}) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ParticipantBadges({ p }: { p: Participant }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+      {p.participant_type && (
+        <span className="rounded-full bg-brand-primary/10 px-2.5 py-0.5 text-xs font-semibold text-brand-primary">
+          {p.participant_type}
+        </span>
+      )}
+      {p.zone && (
+        <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+          Zone: {p.zone}
+        </span>
+      )}
+      {p.taluka && (
+        <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+          {p.taluka}
+        </span>
+      )}
+      {p.participant_type === "Yog Trainer" && p.coach_name && (
+        <div className="w-full text-center text-xs text-muted-foreground">
+          Coach: <span className="font-semibold text-foreground">{p.coach_name}</span>
+        </div>
+      )}
+      {p.coordinator_name && (
+        <div className="w-full text-center text-xs text-muted-foreground">
+          Coordinator: <span className="font-semibold text-foreground">{p.coordinator_name}</span>
+        </div>
+      )}
     </div>
   );
 }

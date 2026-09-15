@@ -30,7 +30,7 @@ const registerSchema = z.object({
     .optional()
     .transform((v) => (v ? v : undefined)),
   gender: z
-    .enum(["Male", "Female", "Other"])
+    .enum(["Male", "Female"])
     .optional(),
   date_of_birth: z
     .string()
@@ -39,7 +39,9 @@ const registerSchema = z.object({
     .optional()
     .transform((v) => (v && v.length > 0 ? v : undefined)),
   designation: z
-    .enum(["Yoga Coach", "Yoga Trainer", "Yoga Sadhak", "Other"])
+    .string()
+    .trim()
+    .max(80)
     .optional(),
   ref: z
     .string()
@@ -292,6 +294,59 @@ export const registerParticipant = createServerFn({ method: "POST" })
       age = computeAge(data.date_of_birth, eventDate);
     }
 
+    // Strict Vadodara Yog Shibir option validation
+    const cf = { ...(data.custom_fields ?? {}) };
+    if (cf.participant_type) {
+      const pt = String(cf.participant_type).trim();
+      const validTypes = ["Yog Coach", "Yog Trainer", "Yog Sadhak"];
+      if (!validTypes.includes(pt)) {
+        return {
+          ok: false as const,
+          error: "Invalid Participant Type. Allowed options: Yog Coach, Yog Trainer, Yog Sadhak.",
+        };
+      }
+      if (pt === "Yog Trainer") {
+        if (!cf.coach_name || String(cf.coach_name).trim().length === 0) {
+          return { ok: false as const, error: "Coach Name is required for Yog Trainers." };
+        }
+      } else {
+        // Coach Name is strictly applicable ONLY for Yog Trainers
+        delete cf.coach_name;
+      }
+    }
+
+    if (cf.zone) {
+      const z = String(cf.zone).trim();
+      const validZones = ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Gramya / Rural"];
+      if (!validZones.includes(z)) {
+        return {
+          ok: false as const,
+          error: "Invalid Zone. Allowed options: Zone 1, Zone 2, Zone 3, Zone 4, Gramya / Rural.",
+        };
+      }
+    }
+
+    if (data.taluka) {
+      const t = data.taluka.trim();
+      const validTalukas = [
+        "Vadodara (City)",
+        "Vadodara (Rural)",
+        "Dabhoi",
+        "Karjan",
+        "Padra",
+        "Savli",
+        "Shinor",
+        "Waghodia",
+        "Desar",
+      ];
+      if ((districtName === "Vadodara" || data.district_slug === "vadodara-yog-shibir") && !validTalukas.includes(t)) {
+        return {
+          ok: false as const,
+          error: "Invalid Taluka. Please select from the approved Vadodara taluka list.",
+        };
+      }
+    }
+
     // The DB trigger assigns registration_number using this event's own
     // prefix + per-event sequence, so we send a placeholder and read back
     // the authoritative value from the insert.
@@ -308,7 +363,10 @@ export const registerParticipant = createServerFn({ method: "POST" })
         date_of_birth: data.date_of_birth ?? null,
         age,
         district: districtName,
-        designation: data.designation ?? null,
+        designation:
+          (typeof cf.participant_type === "string" && cf.participant_type.trim().length > 0
+            ? cf.participant_type.trim()
+            : data.designation ?? null),
         referral_code: "pending",
         referred_by,
         partner_id,
@@ -318,7 +376,7 @@ export const registerParticipant = createServerFn({ method: "POST" })
         // Unique per-participant QR token used on the digital ID card for
         // physical check-in at the shibir venue.
         qr_token: crypto.randomUUID().replace(/-/g, ""),
-        custom_fields: data.custom_fields ?? {},
+        custom_fields: cf,
       })
       .select("registration_number")
       .single();

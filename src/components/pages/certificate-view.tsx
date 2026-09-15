@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,57 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   return Promise.race([promise, timeout]).finally(() => {
     if (timeoutId) clearTimeout(timeoutId);
   });
+}
+
+function CertificatePreview({
+  render,
+  certRef,
+}: {
+  render: CertificateRenderData;
+  certRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(0.4);
+
+  useEffect(() => {
+    function updateScale() {
+      if (containerRef.current) {
+        const availableWidth = containerRef.current.clientWidth - 16;
+        const targetScale = Math.min(availableWidth / render.template.canvas_width, 0.55);
+        setScale(Math.max(0.15, targetScale));
+      }
+    }
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    return () => window.removeEventListener("resize", updateScale);
+  }, [render.template.canvas_width]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="flex justify-center overflow-hidden rounded-xl border border-border bg-slate-50 p-2 shadow-inner"
+    >
+      <div
+        style={{
+          width: `${render.template.canvas_width * scale}px`,
+          height: `${render.template.canvas_height * scale}px`,
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+            width: `${render.template.canvas_width}px`,
+            height: `${render.template.canvas_height}px`,
+          }}
+        >
+          <CertificateRender ref={certRef} data={render} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function CertificateView({ eventSlug }: CertificateViewProps) {
@@ -226,11 +277,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
 
                 {render && (
                   <>
-                    <div className="overflow-x-auto rounded-lg border border-border bg-white p-2 shadow-sm">
-                      <div style={{ transform: "scale(0.5)", transformOrigin: "top left", width: `${render.template.canvas_width * 0.5}px`, height: `${render.template.canvas_height * 0.5}px` }}>
-                        <CertificateRender ref={certRef} data={render} />
-                      </div>
-                    </div>
+                    <CertificatePreview render={render} certRef={certRef} />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Button onClick={downloadPdf} size="lg" className="h-12 w-full">
                         <Download className="mr-2 h-5 w-5" /> Download PDF

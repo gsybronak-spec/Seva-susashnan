@@ -5,17 +5,26 @@
 //     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { cloudflare } from "@cloudflare/vite-plugin";
+
+const isVercelBuild = process.env.BUILD_TARGET === "vercel";
 
 export default defineConfig({
-  tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
-    server: { entry: "server" },
-  },
-  // Deployment target: Vercel (serverless functions via the Nitro `vercel`
-  // preset). Output lands in `.output/` (public + server) which Vercel picks
-  // up automatically. Build locally with `npm run build`.
-  nitro: {
-    preset: "vercel",
-  },
+  plugins: isVercelBuild
+    ? []
+    : [
+        cloudflare({
+          viteEnvironment: { name: "ssr" },
+        }),
+      ],
+  tanstackStart: isVercelBuild
+    ? {
+        server: { entry: "server" },
+      }
+    : undefined,
+  nitro: isVercelBuild
+    ? {
+        preset: "vercel",
+      }
+    : false,
 });

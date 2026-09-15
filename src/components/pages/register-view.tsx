@@ -19,7 +19,7 @@ import { partnerLookup } from "@/lib/partner.functions";
 import { useEventConfig, type EventConfigInitialData } from "@/hooks/use-event-config";
 import type { FormField } from "@/lib/event-config";
 
-type Designation = "" | "Yoga Coach" | "Yoga Trainer" | "Yoga Sadhak" | "Other";
+type Designation = "" | "Yog Coach" | "Yog Trainer" | "Yog Sadhak";
 
 export type RegisterViewProps = {
   eventSlug?: string;
@@ -224,13 +224,14 @@ export function RegisterView({
     for (const r of rules) {
       const other = values[r.field];
       const otherStr = Array.isArray(other) ? other.map(String) : other == null ? "" : String(other);
+      const targetVal = String(r.value ?? "").trim().toLowerCase();
       const match = Array.isArray(otherStr)
-        ? otherStr.includes(r.value)
+        ? otherStr.map((s) => s.trim().toLowerCase()).includes(targetVal)
         : r.operator === "not_equals"
-        ? otherStr !== r.value
+        ? otherStr.trim().toLowerCase() !== targetVal
         : r.operator === "includes"
-        ? otherStr.includes(r.value)
-        : otherStr === r.value;
+        ? otherStr.trim().toLowerCase().includes(targetVal)
+        : otherStr.trim().toLowerCase() === targetVal;
       if (!match) return false;
     }
     return true;
@@ -278,12 +279,38 @@ export function RegisterView({
       toast.error("Enter a valid 10-digit Indian mobile number.");
       return;
     }
-    if (isOn("designation") && designation && !["Yoga Coach", "Yoga Trainer", "Yoga Sadhak", "Other"].includes(designation)) {
-      toast.error("Please select a valid designation.");
+    if (
+      isOn("designation") &&
+      designation &&
+      !["Yog Coach", "Yog Trainer", "Yog Sadhak"].includes(designation)
+    ) {
+      toast.error("Please select a valid designation (Yog Coach, Yog Trainer, or Yog Sadhak).");
       return;
     }
-    if (isOn("gender") && gender && !["Male", "Female", "Other"].includes(gender)) {
-      toast.error("Please select a valid gender.");
+    const participantTypeVal = typeof values.participant_type === "string" ? values.participant_type.trim() : "";
+    if (participantTypeVal && !["Yog Coach", "Yog Trainer", "Yog Sadhak"].includes(participantTypeVal)) {
+      toast.error("Please select a valid Participant Type: Yog Coach, Yog Trainer, or Yog Sadhak.");
+      return;
+    }
+    if (participantTypeVal === "Yog Trainer") {
+      const coach = typeof values.coach_name === "string" ? values.coach_name.trim() : "";
+      if (!coach) {
+        toast.error("Coach Name is required for Yog Trainers.");
+        return;
+      }
+    }
+    const zoneVal = typeof values.zone === "string" ? values.zone.trim() : "";
+    if (zoneVal && !["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Gramya / Rural"].includes(zoneVal)) {
+      toast.error("Please select a valid Zone: Zone 1, Zone 2, Zone 3, Zone 4, or Gramya / Rural.");
+      return;
+    }
+    const coordVal = typeof values.coordinator_name === "string" ? values.coordinator_name.trim() : "";
+    if (fields.some((f) => f.key === "coordinator_name") && !coordVal) {
+      toast.error("Coordinator Name is required.");
+      return;
+    }
+    if (isOn("gender") && gender && !["Male", "Female"].includes(gender)) {
+      toast.error("Please select a valid gender (Male or Female).");
       return;
     }
     if (isOn("date_of_birth") && date_of_birth && !/^\d{4}-\d{2}-\d{2}$/.test(date_of_birth)) {
@@ -314,6 +341,11 @@ export function RegisterView({
       }
     }
 
+    // Coach name is strictly ONLY applicable for Yog Trainer
+    if (participantTypeVal !== "Yog Trainer") {
+      delete custom_fields.coach_name;
+    }
+
     setSubmitting(true);
     const timeoutPromise = new Promise<{ ok: false; error: string }>((resolve) =>
       setTimeout(
@@ -331,15 +363,13 @@ export function RegisterView({
             email: email || undefined,
             organization: organization || undefined,
             taluka: taluka || undefined,
-            gender: isOn("gender") && gender
-              ? (gender as "Male" | "Female" | "Other")
+            gender: isOn("gender") && (gender === "Male" || gender === "Female")
+              ? gender
               : undefined,
             date_of_birth: isOn("date_of_birth") && date_of_birth ? date_of_birth : undefined,
             designation: partnerInfo
               ? undefined
-              : isOn("designation") && designation
-                ? (designation as "Yoga Coach" | "Yoga Trainer" | "Yoga Sadhak" | "Other")
-                : undefined,
+              : (participantTypeVal || (isOn("designation") && designation ? designation : undefined)),
             ref: finalRef,
             partner_slug: partnerInfo ? partnerInfo.slug : undefined,
             district_slug: eventSlug || undefined,
@@ -372,7 +402,13 @@ export function RegisterView({
       <div className="mb-6 text-center">
         <p className="kicker justify-center">Registration</p>
         <h1 className="display-2 mt-2">{config.general.title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm font-semibold text-brand-primary">
+          Sunday, 20 September 2026 • 6:00 AM to 8:00 AM
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Venue: {config.venue || (config.general as any).venue || "Railway Police Parade Ground, Kothi Kacheri Char Rasta, Behind Kothi Kacheri, Vadodara, Gujarat"}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
           {!isMultiDistrictEvent && districtLabel ? `${districtLabel} District` : " "}
         </p>
         {/* trust strip — the three things every participant receives */}
@@ -592,11 +628,19 @@ function FieldRenderer({
     case "radio":
       return (
         <div className="space-y-2">{label}
-          <div className="space-y-1">
+          <div className="flex flex-wrap gap-4 pt-1">
             {field.options.map((o) => (
-              <label key={o.value} className="flex items-center gap-2 text-sm">
-                <input type="radio" name={field.key} value={o.value} checked={value === o.value} onChange={() => setValue(o.value)} disabled={field.readonly} />
-                {o.label}
+              <label key={o.value} className="flex cursor-pointer items-center gap-2 text-sm text-foreground hover:text-brand-primary">
+                <input
+                  type="radio"
+                  name={field.key}
+                  value={o.value}
+                  checked={value === o.value}
+                  onChange={() => setValue(o.value)}
+                  disabled={field.readonly}
+                  className="h-4 w-4 text-brand-primary focus:ring-brand-primary"
+                />
+                <span>{o.label}</span>
               </label>
             ))}
           </div>

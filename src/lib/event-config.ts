@@ -398,17 +398,15 @@ export const DEFAULT_FORM_FIELDS: FormField[] = [
   makeField({ key: "gender", type: "radio", label: "Gender", required: false, order: 4, builtin: true, options: [
     { label: "Male", value: "Male" },
     { label: "Female", value: "Female" },
-    { label: "Other", value: "Other" },
   ] }),
   makeField({ key: "date_of_birth", type: "date", label: "Date of Birth", required: false, order: 5, builtin: true, help: "Age will be calculated automatically." }),
   makeField({ key: "district", type: "text", label: "District", placeholder: "", required: true, order: 6, builtin: true, readonly: true, default_value: "", help: "District is automatically selected based on the event." }),
   makeField({ key: "taluka", type: "text", label: "Taluka / City", placeholder: "Your taluka or city", required: false, order: 7, builtin: true }),
   makeField({ key: "organization", type: "text", label: "Organization / Centre", placeholder: "Your organization or centre name", required: false, order: 8, builtin: true }),
   makeField({ key: "designation", type: "dropdown", label: "Designation", placeholder: "Select designation", required: true, order: 9, builtin: true, options: [
-    { label: "Yoga Coach", value: "Yoga Coach" },
-    { label: "Yoga Trainer", value: "Yoga Trainer" },
-    { label: "Yoga Sadhak", value: "Yoga Sadhak" },
-    { label: "Other", value: "Other" },
+    { label: "Yog Coach", value: "Yog Coach" },
+    { label: "Yog Trainer", value: "Yog Trainer" },
+    { label: "Yog Sadhak", value: "Yog Sadhak" },
   ] }),
   makeField({ key: "ref", type: "text", label: "Referral Code (optional)", placeholder: "Enter a referral code from this event", required: false, order: 10, builtin: true }),
 
@@ -668,13 +666,16 @@ function mergeFormFields(saved: Partial<FormField>[]): FormField[] {
     if (!f?.key) continue;
     byKey.set(f.key, normalizeField(f as Partial<FormField> & { key: string }, byKey.size + 1));
   }
-  // Ensure built-ins always exist and stay flagged as builtin.
+
+  const isCustomEventConfig = byKey.size > 0;
   const essentialSet = new Set<string>(ESSENTIAL_FIELD_KEYS);
+
   for (const def of DEFAULT_FORM_FIELDS) {
-    // Always clone the shared default before handing it out — otherwise every
-    // event missing this built-in would share (and mutate) one object.
     if (!byKey.has(def.key)) {
-      byKey.set(def.key, deepClone(def));
+      // For events that have explicitly configured their own fields, only backfill essential identification fields
+      if (!isCustomEventConfig || essentialSet.has(def.key)) {
+        byKey.set(def.key, deepClone(def));
+      }
     } else {
       const cur = byKey.get(def.key)!;
       const isEss = essentialSet.has(def.key);
@@ -684,7 +685,6 @@ function mergeFormFields(saved: Partial<FormField>[]): FormField[] {
         enabled: isEss ? true : cur.enabled,
         hidden: isEss ? false : cur.hidden,
         required: isEss ? true : cur.required,
-        // keep default options if user cleared them for a core select
         options: cur.options?.length ? cur.options : deepClone(def.options),
       });
     }

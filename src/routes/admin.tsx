@@ -405,6 +405,7 @@ type Row = {
   attendance_status?: string;
   check_in_time?: string | null;
   check_in_method?: string | null;
+  custom_fields?: Record<string, unknown> | null;
 };
 
 
@@ -662,9 +663,13 @@ function Dashboard({
       "Age Group",
       "Village",
       "Taluka",
+      "Zone",
       "District",
       "Organization / Centre",
       "Designation",
+      "Coach Name",
+      "Coordinator Name",
+      "Referred By",
       "Registration Status",
       "Attendance Status",
       "Check-In Time",
@@ -678,6 +683,7 @@ function Dashboard({
     };
     const lines = [headers.join(",")];
     for (const r of source) {
+      const cf = (r.custom_fields ?? {}) as Record<string, unknown>;
       lines.push(
         [
           r.registration_number,
@@ -690,9 +696,12 @@ function Dashboard({
           r.age_group ?? "",
           r.village,
           r.taluka_label || r.taluka || "",
+          cf.zone ?? "",
           r.district_label || r.district || "",
-          r.organization ?? "",
-          r.designation,
+          cf.participant_type || r.designation || "",
+          (cf.participant_type === "Yog Trainer" || r.designation === "Yog Trainer") ? (cf.coach_name ?? "") : "",
+          cf.coordinator_name ?? "",
+          r.referred_by ?? "",
           r.registration_status ?? "Registered",
           r.attendance_status ?? "Pending",
           r.check_in_time
@@ -1175,7 +1184,7 @@ function Dashboard({
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-        <table className="w-full min-w-[1200px] text-sm">
+        <table className="w-full min-w-[1280px] text-sm">
           <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
             <tr>
               <th className="p-3">Reg. No.</th>
@@ -1185,8 +1194,9 @@ function Dashboard({
               <th className="p-3">DOB</th>
               <th className="p-3">Age</th>
               <th className="p-3">Age Group</th>
-              <th className="p-3">Village / Taluka</th>
-              <th className="p-3">Designation</th>
+              <th className="p-3">Taluka / Zone</th>
+              <th className="p-3">Role / Type</th>
+              <th className="p-3">Attendance</th>
               <th className="p-3">Partner</th>
               <th className="p-3">Ref By</th>
               <th className="p-3">Referrals</th>
@@ -1197,7 +1207,7 @@ function Dashboard({
           <tbody>
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={14} className="p-6 text-center text-muted-foreground">
+                <td colSpan={15} className="p-6 text-center text-muted-foreground">
                   {isFetching ? "Loading…" : "No registrations match."}
                 </td>
               </tr>
@@ -1205,18 +1215,69 @@ function Dashboard({
 
             {filteredRows.map((r) => (
               <tr key={r.id} className="border-t border-border align-top">
-                <td className="p-3 font-mono text-brand-primary">{r.registration_number}</td>
-                <td className="p-3">{r.full_name}</td>
+                <td className="p-3 font-mono font-medium text-brand-primary">{r.registration_number}</td>
+                <td className="p-3 font-medium text-foreground">{r.full_name}</td>
                 <td className="p-3">{r.mobile}</td>
                 <td className="p-3">{r.gender ?? "—"}</td>
                 <td className="p-3 text-xs">{r.date_of_birth ?? "—"}</td>
                 <td className="p-3">{r.age ?? "—"}</td>
                 <td className="p-3 text-xs">{r.age_group ?? "—"}</td>
                 <td className="p-3">
-                  {r.village}
-                  <div className="text-xs text-muted-foreground">{r.taluka}</div>
+                  <div className="font-medium text-foreground">{r.taluka || "—"}</div>
+                  {Boolean(r.custom_fields?.zone) && (
+                    <div className="text-xs text-muted-foreground">
+                      Zone: {String(r.custom_fields?.zone)}
+                    </div>
+                  )}
+                  {r.village && (
+                    <div className="text-[11px] text-muted-foreground/80">{r.village}</div>
+                  )}
                 </td>
-                <td className="p-3">{r.designation}</td>
+                <td className="p-3">
+                  <div className="font-medium text-foreground">
+                    {(typeof r.custom_fields?.participant_type === "string" && r.custom_fields.participant_type) ||
+                      r.designation ||
+                      "—"}
+                  </div>
+                  {((r.custom_fields?.participant_type === "Yog Trainer" || r.designation === "Yog Trainer") &&
+                    typeof r.custom_fields?.coach_name === "string" &&
+                    r.custom_fields.coach_name) ? (
+                    <div className="text-xs text-muted-foreground">
+                      Coach: {String(r.custom_fields.coach_name)}
+                    </div>
+                  ) : null}
+                  {typeof r.custom_fields?.coordinator_name === "string" &&
+                    r.custom_fields.coordinator_name && (
+                      <div className="text-xs text-muted-foreground">
+                        Coord: {String(r.custom_fields.coordinator_name)}
+                      </div>
+                    )}
+                </td>
+                <td className="p-3">
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      r.attendance_status === "Checked-In" || r.attendance_status === "checked_in"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        r.attendance_status === "Checked-In" || r.attendance_status === "checked_in"
+                          ? "bg-emerald-600"
+                          : "bg-amber-600"
+                      }`}
+                    />
+                    {r.attendance_status === "Checked-In" || r.attendance_status === "checked_in"
+                      ? "Checked-In"
+                      : "Pending"}
+                  </span>
+                  {r.check_in_time && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {new Date(r.check_in_time).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  )}
+                </td>
                 <td className="p-3 text-xs">{r.partner_name ?? "—"}</td>
                 <td className="p-3 font-mono text-xs">{r.referred_by ?? "—"}</td>
 

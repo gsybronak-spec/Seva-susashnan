@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarDays, Clock, Sparkles, User } from "lucide-react";
+import { CalendarDays, Clock, MapPin, Sparkles, User } from "lucide-react";
 import {
   formatTimeRange,
   formatEventDate,
@@ -94,6 +94,12 @@ export function EventInfoCard({ config }: { config: EventConfig }) {
                   <User className="h-4 w-4 text-brand-primary" />
                   {general.speaker_name}
                   {general.speaker_designation ? `, ${general.speaker_designation}` : ""}
+                </div>
+              )}
+              {((config.venue || (general as any).venue)) && (
+                <div className="inline-flex items-center gap-1.5 text-foreground">
+                  <MapPin className="h-4 w-4 text-brand-primary" />
+                  {config.venue || (general as any).venue}
                 </div>
               )}
             </div>

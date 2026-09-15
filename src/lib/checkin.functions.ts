@@ -18,6 +18,11 @@ export type CheckinParticipant = {
   mobile: string;
   gender: string | null;
   district: string | null;
+  taluka?: string | null;
+  zone?: string | null;
+  participant_type?: string | null;
+  coach_name?: string | null;
+  coordinator_name?: string | null;
   organization: string | null;
   qr_token: string | null;
 };
@@ -26,24 +31,14 @@ export type CheckinResult =
   | {
       ok: true;
       action: "checked_in";
-      participant: {
-        registration_number: string;
-        full_name: string;
-        district: string | null;
-        organization: string | null;
-      };
+      participant: CheckinParticipant;
       check_in_time: string;
       method: "qr" | "manual";
     }
   | {
       ok: true;
       action: "already";
-      participant: {
-        registration_number: string;
-        full_name: string;
-        district: string | null;
-        organization: string | null;
-      };
+      participant: CheckinParticipant;
       previous_check_in_time: string;
       method: "qr" | "manual";
     }
@@ -91,7 +86,7 @@ export const resolveQrToken = createServerFn({ method: "POST" })
     // Look up participant across registrations by unique qr_token
     const { data: reg } = await supabaseAdmin
       .from("registrations")
-      .select("registration_number, full_name, mobile, gender, district, organization, qr_token, event_id")
+      .select("registration_number, full_name, mobile, gender, district, taluka, custom_fields, organization, qr_token, event_id")
       .eq("qr_token", data.token)
       .maybeSingle();
 
@@ -103,6 +98,8 @@ export const resolveQrToken = createServerFn({ method: "POST" })
       mobile: string;
       gender: string | null;
       district: string | null;
+      taluka: string | null;
+      custom_fields: Record<string, unknown> | null;
       organization: string | null;
       qr_token: string | null;
       event_id: string;
@@ -131,12 +128,28 @@ export const resolveQrToken = createServerFn({ method: "POST" })
       .eq("registration_number", regData.registration_number)
       .maybeSingle();
 
+    const cf = (regData.custom_fields ?? {}) as Record<string, unknown>;
+    const rawPt = (cf.participant_type as string) ?? null;
+    const participantType =
+      rawPt === "Yoga Coach" || rawPt === "Yog Coach"
+        ? "Yog Coach"
+        : rawPt === "Yoga Trainer" || rawPt === "Yog Trainer"
+        ? "Yog Trainer"
+        : rawPt === "Yoga Sadhak" || rawPt === "Yog Sadhak"
+        ? "Yog Sadhak"
+        : rawPt;
+
     const participant: CheckinParticipant = {
       registration_number: regData.registration_number,
       full_name: regData.full_name,
       mobile: regData.mobile,
       gender: regData.gender,
       district: regData.district,
+      taluka: regData.taluka ?? null,
+      zone: (cf.zone as string) ?? null,
+      participant_type: participantType,
+      coach_name: participantType === "Yog Trainer" ? ((cf.coach_name as string) ?? null) : null,
+      coordinator_name: (cf.coordinator_name as string) ?? null,
       organization: regData.organization,
       qr_token: regData.qr_token,
     };
@@ -179,7 +192,7 @@ export const performCheckin = createServerFn({ method: "POST" })
     // Locate the participant by registration_number
     const { data: reg } = await supabaseAdmin
       .from("registrations")
-      .select("registration_number, full_name, mobile, gender, district, organization, qr_token, event_id")
+      .select("registration_number, full_name, mobile, gender, district, taluka, custom_fields, organization, qr_token, event_id")
       .eq("registration_number", data.registration_number)
       .maybeSingle();
 
@@ -191,6 +204,8 @@ export const performCheckin = createServerFn({ method: "POST" })
       mobile: string;
       gender: string | null;
       district: string | null;
+      taluka: string | null;
+      custom_fields: Record<string, unknown> | null;
       organization: string | null;
       qr_token: string | null;
       event_id: string;
@@ -211,12 +226,28 @@ export const performCheckin = createServerFn({ method: "POST" })
     }
 
     const eventId = regData.event_id;
+    const cf = (regData.custom_fields ?? {}) as Record<string, unknown>;
+    const rawPt = (cf.participant_type as string) ?? null;
+    const participantType =
+      rawPt === "Yoga Coach" || rawPt === "Yog Coach"
+        ? "Yog Coach"
+        : rawPt === "Yoga Trainer" || rawPt === "Yog Trainer"
+        ? "Yog Trainer"
+        : rawPt === "Yoga Sadhak" || rawPt === "Yog Sadhak"
+        ? "Yog Sadhak"
+        : rawPt;
+
     const participant: CheckinParticipant = {
       registration_number: regData.registration_number,
       full_name: regData.full_name,
       mobile: regData.mobile,
       gender: regData.gender,
       district: regData.district,
+      taluka: regData.taluka ?? null,
+      zone: (cf.zone as string) ?? null,
+      participant_type: participantType,
+      coach_name: participantType === "Yog Trainer" ? ((cf.coach_name as string) ?? null) : null,
+      coordinator_name: (cf.coordinator_name as string) ?? null,
       organization: regData.organization,
       qr_token: regData.qr_token,
     };
@@ -248,12 +279,7 @@ export const performCheckin = createServerFn({ method: "POST" })
         return {
           ok: true,
           action: "already",
-          participant: {
-            registration_number: participant.registration_number,
-            full_name: participant.full_name,
-            district: participant.district,
-            organization: participant.organization,
-          },
+          participant,
           previous_check_in_time:
             (existing as { check_in_time: string } | null)?.check_in_time ??
             new Date().toISOString(),
@@ -267,12 +293,7 @@ export const performCheckin = createServerFn({ method: "POST" })
     return {
       ok: true,
       action: "checked_in",
-      participant: {
-        registration_number: participant.registration_number,
-        full_name: participant.full_name,
-        district: participant.district,
-        organization: participant.organization,
-      },
+      participant,
       check_in_time: (inserted as { check_in_time: string }).check_in_time,
       method: data.method,
     };

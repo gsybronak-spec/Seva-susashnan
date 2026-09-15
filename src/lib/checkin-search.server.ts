@@ -28,7 +28,7 @@ export const checkinSearch = createServerFn({ method: "GET" })
     const safe = data.q.replace(/[%_\\]/g, "\\$&");
     const { data: rows, error } = await supabaseAdmin
       .from("registrations")
-      .select("registration_number, full_name, mobile, district")
+      .select("registration_number, full_name, mobile, district, taluka, custom_fields")
       .or(
         `full_name.ilike.%${safe}%,mobile.ilike.%${safe}%,registration_number.ilike.%${safe}%`,
       )
@@ -43,12 +43,30 @@ export const checkinSearch = createServerFn({ method: "GET" })
           full_name: string;
           mobile: string;
           district: string | null;
+          taluka: string | null;
+          custom_fields: Record<string, unknown> | null;
         };
+        const cf = row.custom_fields ?? {};
+        const rawPt = (cf.participant_type as string) ?? null;
+        const participantType =
+          rawPt === "Yoga Coach" || rawPt === "Yog Coach"
+            ? "Yog Coach"
+            : rawPt === "Yoga Trainer" || rawPt === "Yog Trainer"
+            ? "Yog Trainer"
+            : rawPt === "Yoga Sadhak" || rawPt === "Yog Sadhak"
+            ? "Yog Sadhak"
+            : rawPt;
+
         return {
           registration_number: row.registration_number,
           full_name: row.full_name,
           mobile: row.mobile,
           district: row.district,
+          taluka: row.taluka,
+          zone: (cf.zone as string) ?? null,
+          participant_type: participantType,
+          coach_name: participantType === "Yog Trainer" ? ((cf.coach_name as string) ?? null) : null,
+          coordinator_name: (cf.coordinator_name as string) ?? null,
         };
       }),
     };

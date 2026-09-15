@@ -12,15 +12,12 @@ function Page() {
         {BRAND.name}
       </p>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <Card icon={MapPin} title="Address">
-          {BRAND.contactAddress}
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <Card icon={MapPin} title="Department">
+          {BRAND.departmentLine}, Government of Gujarat
         </Card>
-        <Card icon={Phone} title="Phone">
-          +91 00000 00000
-        </Card>
-        <Card icon={Mail} title="Email">
-          {BRAND.contactEmail}
+        <Card icon={Mail} title="Official Enquiries">
+          Contact information and official helpline will be published by Gujarat State Yog Board. For event queries, please refer to your event registration pass or contact your local shibir coordinator.
         </Card>
       </div>
     </div>
