@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import QRCode from "qrcode";
 import { Download, Printer, Copy, Check, Loader2, Sparkles } from "lucide-react";
@@ -355,32 +355,45 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
       {/* Visual ID Card Preview Container */}
       <div
         ref={cardRef}
-        className="relative overflow-hidden rounded-2xl bg-white border-2 border-[#E8E0D5] shadow-xl"
+        className="relative overflow-hidden rounded-2xl bg-white border border-[#E8E0D5] shadow-xl shadow-[#0F3E3E]/5"
       >
         {/* Top Tricolor Stripe */}
-        <div className="h-2.5 w-full flex">
+        <div className="h-2 w-full flex">
           <div className="w-1/3 bg-[#FF9933]" />
           <div className="w-1/3 bg-white" />
           <div className="w-1/3 bg-[#138808]" />
         </div>
 
-        <div className="p-6 sm:p-8 space-y-6">
+        {/* Subtle Watermark Lotus Ornament */}
+        <div className="absolute -right-8 -bottom-8 w-60 sm:w-80 h-60 sm:h-80 pointer-events-none opacity-[0.07] z-0">
+          <img
+            src="/images/lotus-transparent.svg"
+            alt=""
+            className="w-full h-full object-contain"
+            aria-hidden="true"
+          />
+        </div>
+
+        <div className="p-5 sm:p-8 space-y-6 relative z-10">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E8E0D5] pb-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E8E0D5] pb-4">
             <div>
-              <h3 className="text-base sm:text-lg font-bold text-[#0F3E3E] tracking-tight">
-                GUJARAT STATE YOG BOARD
-              </h3>
-              <p className="text-xs sm:text-sm text-[#4E7D66] font-medium">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-[#D97706]" />
+                <h3 className="text-sm sm:text-base font-bold text-[#0F3E3E] tracking-tight uppercase">
+                  Gujarat State Yog Board
+                </h3>
+              </div>
+              <p className="text-[11px] sm:text-xs text-[#4E7D66] font-medium mt-0.5">
                 ગુજરાત રાજ્ય યોગ બોર્ડ • રમતગમત, યુવા અને સાંસ્કૃતિક પ્રવૃત્તિઓ વિભાગ
               </p>
-              <p className="text-xs text-[#D97706] font-semibold mt-1">
+              <p className="text-xs font-semibold text-[#D97706] mt-1">
                 {data.event_title}
               </p>
             </div>
-            <div className="flex items-center gap-2 self-start sm:self-auto bg-[#FAF8F5] px-3 py-1.5 rounded-lg border border-[#E8E0D5]">
-              <Sparkles className="w-4 h-4 text-[#D97706]" />
-              <span className="text-xs font-semibold text-[#0F3E3E]">Verified Pass</span>
+            <div className="inline-flex items-center gap-1.5 self-start sm:self-auto bg-[#FAF8F5] px-3 py-1 rounded-full border border-[#E8E0D5]">
+              <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
+              <span className="text-[11px] font-semibold text-[#0F3E3E]">Verified Pass</span>
             </div>
           </div>
 
@@ -389,50 +402,50 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
             {/* Participant Details */}
             <div className="md:col-span-2 space-y-4">
               <div>
-                <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+                <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                   Participant Name / સહભાગીનું નામ
                 </p>
-                <p className="text-xl sm:text-2xl font-bold text-[#1C2623]">{data.participant_name}</p>
+                <p className="text-xl sm:text-2xl font-bold text-[#1C2623] mt-0.5">{data.participant_name}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+                  <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                     Registration No / ક્રમાંક
                   </p>
-                  <p className="text-base sm:text-lg font-mono font-bold text-[#0F3E3E]">
+                  <p className="text-base sm:text-lg font-mono font-bold text-[#0F3E3E] mt-0.5">
                     {data.participant_id}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+                  <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                     Category / કેટેગરી
                   </p>
-                  <p className="text-sm sm:text-base font-semibold text-[#D97706]">
+                  <p className="text-sm sm:text-base font-semibold text-[#D97706] mt-0.5">
                     {data.participant_type || "Yog Sadhak"}
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 pt-1">
+              <div className="grid grid-cols-2 gap-4 pt-1 border-t border-stone-100">
                 <div>
-                  <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+                  <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                     District & Zone / જિલ્લો
                   </p>
-                  <p className="text-sm font-semibold text-[#0F3E3E]">
-                    {[data.district, data.zone || data.taluka].filter(Boolean).join(" • ")}
+                  <p className="text-xs sm:text-sm font-semibold text-[#0F3E3E] mt-0.5">
+                    {[data.district, data.zone || data.taluka].filter(Boolean).join(" • ") || "Gujarat"}
                   </p>
                 </div>
                 {(data.coach_name || data.coordinator_name || data.reference_name) && (
                   <div>
-                    <p className="text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+                    <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                       {data.coach_name
                         ? "Coach Name"
                         : data.coordinator_name
                         ? "Coordinator"
                         : "Reference"}
                     </p>
-                    <p className="text-sm font-medium text-[#1C2623]">
+                    <p className="text-xs sm:text-sm font-medium text-[#1C2623] mt-0.5">
                       {data.coach_name || data.coordinator_name || data.reference_name}
                     </p>
                   </div>
@@ -441,33 +454,33 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
             </div>
 
             {/* QR Code Panel */}
-            <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-[#FDFBF7] border border-[#E8E0D5]">
+            <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-[#FAF8F5] border border-[#E8E0D5] shadow-xs">
               {qr ? (
                 <img
                   src={qr}
                   alt="Check-in QR Code"
-                  className="w-44 h-44 rounded-lg bg-white p-2 shadow-sm border border-[#E8E0D5]"
+                  className="w-40 h-40 rounded-lg bg-white p-2 shadow-xs border border-[#E8E0D5]"
                 />
               ) : (
-                <div className="w-44 h-44 flex items-center justify-center bg-stone-100 rounded-lg">
+                <div className="w-40 h-40 flex items-center justify-center bg-stone-100 rounded-lg">
                   <Loader2 className="w-6 h-6 animate-spin text-stone-400" />
                 </div>
               )}
-              <p className="text-xs font-semibold text-[#0F3E3E] mt-3 text-center">
+              <p className="text-xs font-semibold text-[#0F3E3E] mt-2.5 text-center">
                 પ્રવેશ માટે આ QR કોડ સ્કેન કરાવો
               </p>
-              <p className="text-[11px] text-[#64748B] text-center">Event Check-in QR</p>
+              <p className="text-[10px] text-[#64748B] text-center">Event Check-in QR</p>
             </div>
           </div>
 
           {/* Footer Logistics */}
-          <div className="pt-4 border-t border-[#E8E0D5] bg-[#F4F8F5] -mx-6 -mb-6 sm:-mx-8 sm:-mb-8 p-4 sm:p-6 rounded-b-2xl">
-            <div className="text-xs sm:text-sm font-medium text-[#0F3E3E] space-y-1">
+          <div className="pt-4 border-t border-[#E8E0D5] bg-[#FAF8F5] -mx-5 -mb-5 sm:-mx-8 sm:-mb-8 p-4 sm:p-5 rounded-b-2xl">
+            <div className="text-xs font-medium text-[#0F3E3E] space-y-1">
               <p className="font-bold">
                 તારીખ: {data.event_date} &bull; સમય: {data.event_time}
               </p>
               <p className="text-[#2D4A3E]">સ્થળ: {data.venue}</p>
-              <p className="text-[11px] text-[#5C7065] pt-1">
+              <p className="text-[10.5px] text-[#5C7065] pt-0.5">
                 સત્તાવાર ડિજિટલ પ્રવેશ પાસ • ગુજરાત રાજ્ય યોગ બોર્ડ • હેલ્પલાઇન: 1800-233-9642
               </p>
             </div>
@@ -475,12 +488,12 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
         </div>
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex flex-wrap items-center justify-center gap-3 print:hidden">
+      {/* Action Buttons - Mobile First */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 print:hidden">
         <Button
           onClick={downloadCard}
           disabled={downloading}
-          className="h-12 px-6 rounded-xl bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-semibold shadow-md gap-2"
+          className="h-13 px-6 rounded-xl bg-[#0F3E3E] hover:bg-[#144D4D] text-[#FAF8F5] font-bold shadow-md shadow-[#0F3E3E]/20 text-sm gap-2 cursor-pointer transition-all"
         >
           {downloading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -490,23 +503,25 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
           <span>{downloading ? "Generating PNG..." : "Download ID Card (PNG)"}</span>
         </Button>
 
-        <Button
-          variant="outline"
-          onClick={handlePrint}
-          className="h-12 px-5 rounded-xl border-[#E8E0D5] hover:bg-stone-50 text-[#0F3E3E] font-medium gap-2"
-        >
-          <Printer className="w-4 h-4" />
-          <span>Print Pass</span>
-        </Button>
+        <div className="grid grid-cols-2 sm:flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={handlePrint}
+            className="h-12 px-4 rounded-xl border-[#E8E0D5] bg-white hover:bg-stone-50 text-[#0F3E3E] font-medium text-xs gap-1.5 shadow-xs"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Pass</span>
+          </Button>
 
-        <Button
-          variant="outline"
-          onClick={copyPassLink}
-          className="h-12 px-5 rounded-xl border-[#E8E0D5] hover:bg-stone-50 text-[#0F3E3E] font-medium gap-2"
-        >
-          {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-          <span>{copied ? "Link Copied" : "Share Link"}</span>
-        </Button>
+          <Button
+            variant="outline"
+            onClick={copyPassLink}
+            className="h-12 px-4 rounded-xl border-[#E8E0D5] bg-white hover:bg-stone-50 text-[#0F3E3E] font-medium text-xs gap-1.5 shadow-xs"
+          >
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copied ? "Link Copied" : "Share Link"}</span>
+          </Button>
+        </div>
       </div>
     </div>
   );

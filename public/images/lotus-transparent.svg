@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" fill="none" width="100%" height="100%">
+  <defs>
+    <!-- Soft Petal Gradients -->
+    <linearGradient id="lotusPetalMain" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#F472B6" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#FDA4AF" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#FFF1F2" stop-opacity="0.98"/>
+    </linearGradient>
+    <linearGradient id="lotusPetalDeep" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#DB2777" stop-opacity="0.9"/>
+      <stop offset="40%" stop-color="#F43F5E" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#FFE4E6" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="lotusPetalOuter" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#EC4899" stop-opacity="0.75"/>
+      <stop offset="60%" stop-color="#FBCFE8" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="lotusStamen" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#D97706"/>
+      <stop offset="60%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#FEF08A"/>
+    </linearGradient>
+    <linearGradient id="sageLeafBase" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0F3E3E" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#4E7D66" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#6EE7B7" stop-opacity="0.8"/>
+    </linearGradient>
+    <filter id="lotusSoftGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Base Leaf Pads (Sage Green) -->
+  <g opacity="0.9" filter="url(#lotusSoftGlow)">
+    <path d="M200 275 C130 275 70 295 40 310 C90 320 150 315 200 295 C250 315 310 320 360 310 C330 295 270 275 200 275 Z" fill="url(#sageLeafBase)"/>
+    <path d="M200 295 Q140 295 100 305" stroke="#A7F3D0" stroke-width="1" opacity="0.6"/>
+    <path d="M200 295 Q260 295 300 305" stroke="#A7F3D0" stroke-width="1" opacity="0.6"/>
+  </g>
+
+  <!-- Layer 1: Outermost Flared Petals -->
+  <path d="M200 270 C110 250 50 180 60 120 C110 160 150 220 200 270 Z" fill="url(#lotusPetalOuter)"/>
+  <path d="M200 270 C290 250 350 180 340 120 C290 160 250 220 200 270 Z" fill="url(#lotusPetalOuter)"/>
+
+  <!-- Layer 2: Mid-Outer Petals -->
+  <path d="M200 275 C135 240 95 155 125 90 C155 150 180 220 200 275 Z" fill="url(#lotusPetalMain)"/>
+  <path d="M200 275 C265 240 305 155 275 90 C245 150 220 220 200 275 Z" fill="url(#lotusPetalMain)"/>
+
+  <!-- Layer 3: Inner Flank Petals -->
+  <path d="M200 280 C160 225 145 140 170 65 C190 130 195 210 200 280 Z" fill="url(#lotusPetalMain)"/>
+  <path d="M200 280 C240 225 255 140 230 65 C210 130 205 210 200 280 Z" fill="url(#lotusPetalMain)"/>
+
+  <!-- Layer 4: Central Monarch Petal -->
+  <path d="M200 285 C175 200 175 110 200 35 C225 110 225 200 200 285 Z" fill="url(#lotusPetalDeep)"/>
+  
+  <!-- Subtle Spine Highlights -->
+  <path d="M200 55 Q200 170 200 275" stroke="#FFFFFF" stroke-width="1.8" opacity="0.8" stroke-linecap="round"/>
+  <path d="M170 85 Q180 180 195 270" stroke="#FFFFFF" stroke-width="1" opacity="0.5" stroke-linecap="round"/>
+  <path d="M230 85 Q220 180 205 270" stroke="#FFFFFF" stroke-width="1" opacity="0.5" stroke-linecap="round"/>
+
+  <!-- Golden Stamen Radiance & Seed Pod Core -->
+  <ellipse cx="200" cy="245" rx="26" ry="12" fill="url(#lotusStamen)"/>
+  <g fill="#78350F" opacity="0.8">
+    <circle cx="200" cy="244" r="2.2"/>
+    <circle cx="190" cy="243" r="1.8"/>
+    <circle cx="210" cy="243" r="1.8"/>
+    <circle cx="182" cy="245" r="1.5"/>
+    <circle cx="218" cy="245" r="1.5"/>
+  </g>
+  <g fill="#FEF08A">
+    <circle cx="195" cy="237" r="1.2"/>
+    <circle cx="205" cy="237" r="1.2"/>
+    <circle cx="186" cy="239" r="1.2"/>
+    <circle cx="214" cy="239" r="1.2"/>
+  </g>
+</svg>

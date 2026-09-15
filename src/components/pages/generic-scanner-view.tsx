@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
@@ -474,7 +474,7 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
             </div>
 
             {/* Video Viewport & Overlays */}
-            <div className="relative rounded-2xl overflow-hidden bg-black aspect-video sm:aspect-[4/3] flex items-center justify-center border border-stone-800 shadow-xl">
+            <div className="relative rounded-2xl overflow-hidden bg-black aspect-square sm:aspect-[4/3] max-h-[480px] flex items-center justify-center border border-stone-800 shadow-xl">
               <video
                 ref={videoRef}
                 className="w-full h-full object-cover"
@@ -484,8 +484,8 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
 
               {/* Viewport scan targeting frame */}
               {isCameraActive && !result && (
-                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-8">
-                  <div className="relative w-64 h-64 border-2 border-emerald-400/80 rounded-2xl shadow-[0_0_20px_rgba(52,211,153,0.3)]">
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4 sm:p-8">
+                  <div className="relative w-52 h-52 sm:w-64 sm:h-64 border-2 border-emerald-400/80 rounded-2xl shadow-[0_0_20px_rgba(52,211,153,0.3)]">
                     {/* Animated laser scanline */}
                     <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-[scan_2s_ease-in-out_infinite]" />
                   </div>
@@ -504,7 +504,7 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
                   </div>
                   <Button
                     onClick={startCamera}
-                    className="h-11 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold gap-2"
+                    className="h-12 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold gap-2 shadow-lg cursor-pointer"
                   >
                     <Camera className="w-4 h-4" />
                     <span>Start Scanner</span>
@@ -524,14 +524,14 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
                   }`}
                 >
                   {result.state === "success" ? (
-                    <CheckCircle2 className="w-16 h-16 text-emerald-400 mb-3 animate-bounce" />
+                    <CheckCircle2 className="w-14 h-14 sm:w-16 sm:h-16 text-emerald-400 mb-2 animate-bounce" />
                   ) : result.state === "duplicate" ? (
-                    <AlertTriangle className="w-16 h-16 text-amber-400 mb-3" />
+                    <AlertTriangle className="w-14 h-14 sm:w-16 sm:h-16 text-amber-400 mb-2" />
                   ) : (
-                    <ShieldAlert className="w-16 h-16 text-rose-400 mb-3" />
+                    <ShieldAlert className="w-14 h-14 sm:w-16 sm:h-16 text-rose-400 mb-2" />
                   )}
 
-                  <h3 className="text-xl sm:text-2xl font-bold tracking-tight">
+                  <h3 className="text-lg sm:text-2xl font-bold tracking-tight">
                     {result.state === "success"
                       ? "CHECK-IN VERIFIED"
                       : result.state === "duplicate"
@@ -540,33 +540,33 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
                   </h3>
 
                   {result.participant_name && (
-                    <p className="text-lg font-semibold mt-2 text-white">
+                    <p className="text-base sm:text-lg font-semibold mt-1.5 text-white line-clamp-1">
                       {result.participant_name}
                     </p>
                   )}
 
                   {result.participant_id && (
-                    <p className="text-sm font-mono text-emerald-200 mt-1">
+                    <p className="text-sm font-mono text-emerald-200 mt-0.5">
                       {result.participant_id}
                     </p>
                   )}
 
                   {result.check_in_time && (
-                    <div className="flex items-center gap-1.5 text-xs text-stone-300 mt-2">
+                    <div className="flex items-center gap-1.5 text-xs text-stone-300 mt-1.5">
                       <Clock className="w-3.5 h-3.5" />
                       <span>{result.check_in_time}</span>
                     </div>
                   )}
 
                   {result.error && (
-                    <p className="text-sm text-rose-200 mt-2 max-w-sm">{result.error}</p>
+                    <p className="text-xs sm:text-sm text-rose-200 mt-2 max-w-xs">{result.error}</p>
                   )}
 
                   {/* Auto-resume counter or manual advance button */}
-                  <div className="mt-6 flex items-center gap-3">
+                  <div className="mt-5 flex items-center gap-3">
                     <Button
                       onClick={scanNext}
-                      className="h-11 px-6 rounded-xl bg-white text-[#0F3E3E] hover:bg-stone-100 font-bold shadow-lg gap-2"
+                      className="h-12 px-6 rounded-xl bg-white text-[#0F3E3E] hover:bg-stone-100 font-bold shadow-lg gap-2 text-sm cursor-pointer"
                     >
                       <RotateCcw className="w-4 h-4" />
                       <span>
@@ -575,9 +575,9 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
                       </span>
                     </Button>
                   </div>
-                  <p className="text-[11px] text-stone-400 mt-2">
-                    Press <kbd className="px-1.5 py-0.5 bg-white/20 rounded">Space</kbd> or{" "}
-                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded">Enter</kbd> to advance
+                  <p className="text-[11px] text-stone-300 mt-2">
+                    Press <kbd className="px-1.5 py-0.5 bg-white/20 rounded font-mono">Space</kbd> or{" "}
+                    <kbd className="px-1.5 py-0.5 bg-white/20 rounded font-mono">Enter</kbd> to advance
                   </p>
                 </div>
               )}

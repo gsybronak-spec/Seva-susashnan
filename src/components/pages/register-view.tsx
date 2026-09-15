@@ -1,4 +1,4 @@
-﻿import { BRAND } from "@/lib/brand";
+import { BRAND } from "@/lib/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
@@ -358,78 +358,99 @@ export function RegisterView({
     "Railway Police Parade Ground, Kothi Kacheri Char Rasta, Vadodara";
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] py-6 sm:py-10 px-4 sm:px-6 relative overflow-hidden">
-      {/* Decorative Natural Lotus Motif Background */}
-      <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 sm:w-96 h-80 sm:h-96 pointer-events-none opacity-40 z-0">
+    <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] py-4 sm:py-8 px-3.5 sm:px-6 relative overflow-x-hidden">
+      {/* Subtle Ambient Lotus Watermark (Top Right & Bottom Left) */}
+      <div className="fixed -top-12 -right-12 w-64 sm:w-80 h-64 sm:h-80 pointer-events-none opacity-20 z-0">
         <img
-          src="/images/lotus-motif.svg"
+          src="/images/lotus-transparent.svg"
           alt=""
           className="w-full h-full object-contain"
           aria-hidden="true"
         />
       </div>
+      <div className="fixed -bottom-16 -left-16 w-60 sm:w-72 h-60 sm:h-72 pointer-events-none opacity-15 z-0">
+        <img
+          src="/images/lotus-transparent.svg"
+          alt=""
+          className="w-full h-full object-contain rotate-45"
+          aria-hidden="true"
+        />
+      </div>
 
-      <div className="max-w-xl mx-auto space-y-6 relative z-10">
-        {/* Authority Header & Branding */}
-        <div className="text-center space-y-3 pt-2">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FAF8F5] border border-[#E8E0D5] text-[#0F3E3E] text-xs font-semibold shadow-xs">
-            <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />
-            <span>ગુજરાત રાજ્ય યોગ બોર્ડ • સત્તાવાર પોર્ટલ</span>
+      <div className="max-w-xl mx-auto space-y-4 sm:space-y-6 relative z-10">
+        {/* Compact Mobile Hero Card */}
+        <div className="relative overflow-hidden rounded-2xl border border-[#E8E0D5] bg-[#0F3E3E] text-white shadow-lg">
+          {/* Natural Yoga Background Visual with Soft Dark Gradient */}
+          <div className="absolute inset-0 z-0">
+            <img
+              src="/images/yoga-hero-dawn.jpg"
+              alt="Yoga Serenity at Dawn"
+              className="w-full h-full object-cover object-center opacity-40 mix-blend-luminosity"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0F3E3E] via-[#0F3E3E]/85 to-[#0F3E3E]/60" />
           </div>
 
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#0F3E3E] tracking-tight leading-tight">
-            {eventTitle}
-          </h1>
-
-          <p className="text-xs sm:text-sm font-medium text-[#4E7D66]">
-            રમતગમત, યુવા અને સાંસ્કૃતિક પ્રવૃત્તિઓ વિભાગ, ગુજરાત સરકાર
-          </p>
-        </div>
-
-        {/* Event Logistics Quick Card */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-[#E8E0D5] shadow-sm space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="flex items-start gap-2.5">
-              <Calendar className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-[#0F3E3E]">તારીખ / Date</p>
-                <p className="text-[#5C7065]">{eventDate} (રવિવાર)</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-2.5">
-              <Clock className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-[#0F3E3E]">સમય / Time</p>
-                <p className="text-[#5C7065]">{eventTime}</p>
-              </div>
-            </div>
+          {/* Decorative Transparent Lotus Accent */}
+          <div className="absolute top-2 right-2 w-28 sm:w-36 h-28 sm:h-36 opacity-30 pointer-events-none z-0">
+            <img
+              src="/images/lotus-transparent.svg"
+              alt=""
+              className="w-full h-full object-contain"
+              aria-hidden="true"
+            />
           </div>
 
-          <div className="flex items-start gap-2.5 pt-2 border-t border-[#E8E0D5] text-xs">
-            <MapPin className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
+          {/* Compact Content */}
+          <div className="relative z-10 p-4 sm:p-6 space-y-3">
+            {/* Official GSYB Badge */}
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-[#FEF3C7] text-[11px] font-semibold">
+              <Sparkles className="w-3.5 h-3.5 text-[#F59E0B]" />
+              <span>ગુજરાત રાજ્ય યોગ બોર્ડ • સત્તાવાર પોર્ટલ</span>
+            </div>
+
+            {/* Event Title */}
             <div>
-              <p className="font-semibold text-[#0F3E3E]">સ્થળ / Venue</p>
-              <p className="text-[#5C7065] leading-relaxed">{venue}</p>
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white leading-tight">
+                {eventTitle}
+              </h1>
+              <p className="text-xs sm:text-sm font-medium text-emerald-200 mt-1">
+                રમતગમત, યુવા અને સાંસ્કૃતિક પ્રવૃત્તિઓ વિભાગ, ગુજરાત સરકાર
+              </p>
             </div>
-          </div>
 
-          {/* 3 Participant Guarantees */}
-          <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#4E7D66] font-medium">
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> નિઃશુલ્ક પ્રવેશ
-            </span>
-            <span className="flex items-center gap-1">
-              <QrCode className="w-3.5 h-3.5 text-[#D97706]" /> ડિજિટલ QR પાસ
-            </span>
-            <span className="flex items-center gap-1">
-              <Award className="w-3.5 h-3.5 text-purple-600" /> ઇ-પ્રમાણપત્ર
-            </span>
+            {/* Event Logistics Badge Row */}
+            <div className="pt-2 border-t border-white/15 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center gap-2 text-emerald-100">
+                <Calendar className="w-4 h-4 text-[#F59E0B] shrink-0" />
+                <span><strong>{eventDate}</strong> (રવિવાર)</span>
+              </div>
+              <div className="flex items-center gap-2 text-emerald-100">
+                <Clock className="w-4 h-4 text-[#F59E0B] shrink-0" />
+                <span>{eventTime}</span>
+              </div>
+              <div className="flex items-start gap-2 text-emerald-100 sm:col-span-2 pt-0.5">
+                <MapPin className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />
+                <span className="line-clamp-2 text-[11.5px] leading-relaxed">{venue}</span>
+              </div>
+            </div>
+
+            {/* Participant Perks */}
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#FEF3C7] border-t border-white/10">
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> નિઃશુલ્ક પ્રવેશ (Free)
+              </span>
+              <span className="flex items-center gap-1">
+                <QrCode className="w-3.5 h-3.5 text-[#F59E0B]" /> ડિજિટલ QR પાસ
+              </span>
+              <span className="flex items-center gap-1">
+                <Award className="w-3.5 h-3.5 text-amber-300" /> ઇ-પ્રમાણપત્ર
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Main Registration Card */}
-        <div className="rounded-2xl bg-white border border-[#E8E0D5] shadow-lg overflow-hidden">
+        {/* Main Registration Form Glass Card */}
+        <div className="relative rounded-2xl bg-white/95 backdrop-blur-md border border-[#E8E0D5] shadow-xl shadow-[#0F3E3E]/5 overflow-hidden">
           {/* Top Indian Tricolor Stripe */}
           <div className="h-1.5 w-full flex">
             <div className="w-1/3 bg-[#FF9933]" />
@@ -437,19 +458,20 @@ export function RegisterView({
             <div className="w-1/3 bg-[#138808]" />
           </div>
 
-          <div className="p-6 sm:p-8 space-y-6">
+          {/* Form Header */}
+          <div className="p-5 sm:p-8 space-y-6">
             <div className="border-b border-[#E8E0D5] pb-4">
-              <h2 className="text-lg font-bold text-[#0F3E3E]">
+              <h2 className="text-lg sm:text-xl font-bold text-[#0F3E3E] tracking-tight">
                 સહભાગી નોંધણી ફોર્મ / Registration Form
               </h2>
-              <p className="text-xs text-[#5C7065] mt-0.5">
-                કૃપા કરીને નીચે આપેલ માહિતી ધ્યાનપૂર્વક ભરો. (Fields marked with * are required)
+              <p className="text-xs text-[#5C7065] mt-1">
+                કૃપા કરીને નીચે આપેલ માહિતી ભરો. (<span className="text-[#D97706] font-bold">*</span> ચિહ્નિત વિગતો ફરજિયાત છે)
               </p>
             </div>
 
             {/* Referral Info Banner */}
             {ref && referralInfo.status === "valid" && (
-              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2">
+              <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2.5 animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
                   Referred by <strong>{referralInfo.referrerName || ref.toUpperCase()}</strong> ({ref.toUpperCase()})
@@ -467,22 +489,27 @@ export function RegisterView({
                 disabled={submitting}
               />
 
-              <Button
-                type="submit"
-                disabled={submitting}
-                className="w-full h-12 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-bold rounded-xl shadow-md text-sm gap-2 transition-all"
-              >
-                {submitting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="w-4 h-4" />
-                )}
-                <span>{submitting ? "નોંધણી થઈ રહી છે..." : "Complete Registration / નોંધણી કરો"}</span>
-              </Button>
+              {/* Full-width High-Impact Primary CTA */}
+              <div className="pt-2 space-y-3">
+                <Button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full h-14 bg-[#0F3E3E] hover:bg-[#144D4D] active:scale-[0.99] text-[#FAF8F5] font-bold rounded-xl shadow-lg shadow-[#0F3E3E]/20 text-base flex items-center justify-center gap-2.5 transition-all cursor-pointer"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  )}
+                  <span>
+                    {submitting ? "નોંધણી પ્રક્રિયા ચાલુ છે..." : "Complete Registration / નોંધણી કરો"}
+                  </span>
+                </Button>
 
-              <p className="text-[11px] text-center text-[#64748B]">
-                નોંધણી પૂર્ણ કર્યા પછી તમને તાત્કાલિક તમારો ડિજિટલ ID કાર્ડ અને પ્રવેશ QR કોડ મળશે.
-              </p>
+                <p className="text-[11.5px] text-center text-[#5C7065] leading-relaxed">
+                  🔒 નોંધણી પૂર્ણ થતાં જ તમારો ડિજિટલ ID કાર્ડ અને સત્તાવાર પ્રવેશ QR કોડ તરત જ મળશે.
+                </p>
+              </div>
             </form>
           </div>
         </div>
