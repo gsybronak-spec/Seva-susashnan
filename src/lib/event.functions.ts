@@ -43,7 +43,7 @@ export const getEventConfig = createServerFn({ method: "POST" })
 // Minimal, secret-free column set for the public event selection landing
 // page. Deliberately excludes qr_token / youtube_live_url / admin flags.
 const PUBLIC_LIST_COLUMNS =
-  "id, slug, district_id, district_name, district, event_date, event_time, general, features, status, lifecycle_status, publish_status, archived_at, is_template, created_at";
+  "id, slug, district_id, district_name, district, event_date, event_time, venue, general, features, status, lifecycle_status, publish_status, archived_at, is_template, created_at";
 
 /**
  * Events currently open for registration, for the public homepage cards.
@@ -110,12 +110,17 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
         district_name?: string | null;
         district?: string | null;
         event_date?: string | null;
+        event_time?: string | null;
+        venue?: string | null;
         general?: {
           title?: string;
           event_date?: string | null;
           end_date?: string | null;
           start_time?: string | null;
           end_time?: string | null;
+          event_time?: string | null;
+          venue?: string | null;
+          venue_address?: string | null;
           coverage?: { type?: string; district_ids?: string[] | null } | null;
         } | null;
         status?: { value?: string } | null;
@@ -139,6 +144,8 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
         end_date: g.end_date ?? null,
         start_time: g.start_time ?? null,
         end_time: g.end_time ?? null,
+        event_time: g.event_time ?? rec.event_time ?? null,
+        venue: rec.venue ?? g.venue_address ?? g.venue ?? null,
         coverage_type: cov.type,
         coverage_district_names: names,
         district_id: rec.district_id ?? null,

@@ -70,7 +70,7 @@ export function SiteHeader() {
             className={navLinkClass}
             activeProps={{ className: navActiveClass }}
           >
-            Campaigns
+            Events / Registration
           </Link>
           <Link
             to="/idcard"
@@ -134,7 +134,7 @@ export function SiteHeader() {
               className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted"
             >
               <CalendarDays className="h-4 w-4 text-brand-primary" />
-              Campaigns &amp; Shibirs
+              Events / Registration
             </Link>
             <Link
               to="/idcard"
