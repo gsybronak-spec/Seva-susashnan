@@ -63,6 +63,7 @@ export function RegisterView({
   // Dynamic form state
   const [formValues, setFormValues] = useState<Record<string, any>>({
     ref: ref ? ref.toUpperCase() : "",
+    referral_code: ref ? ref.toUpperCase() : "",
   });
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({});
 
@@ -102,7 +103,11 @@ export function RegisterView({
             status: "valid",
             referrerName: res.full_name,
           });
-          setFormValues((cur) => ({ ...cur, ref: res.registration_number }));
+          setFormValues((cur) => ({
+            ...cur,
+            ref: res.registration_number,
+            referral_code: res.registration_number,
+          }));
         } else {
           setReferralInfo({
             status: "invalid",
@@ -111,6 +116,7 @@ export function RegisterView({
           setFormValues((cur) => {
             const next = { ...cur };
             delete next.ref;
+            delete next.referral_code;
             return next;
           });
         }
@@ -132,7 +138,18 @@ export function RegisterView({
     const rawFields = config.form?.fields ?? [];
     const list: FormField[] = rawFields
       .filter((f) => f.enabled && !f.hidden)
-      .filter((f) => !(partnerInfo && f.key === "designation"));
+      .filter((f) => !(partnerInfo && f.key === "designation"))
+      .map((f) => {
+        if ((f.key === "referral_code" || f.key === "ref") && ref) {
+          return {
+            ...f,
+            readonly: true,
+            default_value: ref.toUpperCase(),
+            help: "Code from invitation link automatically applied.",
+          };
+        }
+        return f;
+      });
 
     // If district field isn't present, add it based on coverage
     if (!list.some((f) => f.key === "district")) {
@@ -157,7 +174,7 @@ export function RegisterView({
     }
 
     return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo]);
+  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo, ref]);
 
   // Initialize default values
   useEffect(() => {
@@ -217,6 +234,12 @@ export function RegisterView({
         continue;
       }
 
+      if (strVal && field.key === "full_name") {
+        if (strVal.length < 2) {
+          errors[field.key] = "Full Name must be at least 2 characters.";
+        }
+      }
+
       if (strVal && (field.type === "phone" || field.key === "mobile")) {
         if (!/^[6-9]\d{9}$/.test(strVal)) {
           errors[field.key] = "Enter a valid 10-digit Indian mobile number.";
@@ -248,7 +271,7 @@ export function RegisterView({
       return;
     }
 
-    const fullName = String(formValues.full_name || "").trim();
+    const fullName = String(formValues.full_name || "").trim().toUpperCase();
     const mobile = String(formValues.mobile || "").replace(/\D/g, "");
     const email = formValues.email ? String(formValues.email).trim() : undefined;
     const organization = formValues.organization ? String(formValues.organization).trim() : undefined;
@@ -256,7 +279,9 @@ export function RegisterView({
     const gender = formValues.gender && ["Male", "Female"].includes(formValues.gender) ? formValues.gender : undefined;
     const dob = formValues.date_of_birth ? String(formValues.date_of_birth).trim() : undefined;
     const designation = formValues.participant_type || formValues.designation || undefined;
-    const refCodeVal = formValues.ref ? String(formValues.ref).trim().toUpperCase() : undefined;
+    const refCodeVal = formValues.referral_code || formValues.ref
+      ? String(formValues.referral_code || formValues.ref).trim().toUpperCase()
+      : undefined;
 
     // Separate builtin vs custom_fields
     const builtinKeys = new Set([
@@ -270,6 +295,7 @@ export function RegisterView({
       "designation",
       "district",
       "ref",
+      "referral_code",
     ]);
 
     const custom_fields: Record<string, unknown> = {};
@@ -279,7 +305,24 @@ export function RegisterView({
       }
     }
 
-    // Always preserve participant_type in custom_fields for card display
+    // 5-field mapping
+    if (formValues.district) {
+      custom_fields.district = formValues.district;
+      custom_fields.area_type = formValues.district === "VADODARA RURAL" ? "gramya" : "municipal";
+      if (formValues.district === "VADODARA RURAL") {
+        custom_fields.rural_taluka = "VADODARA RURAL";
+      } else {
+        custom_fields.municipal_zone = formValues.district;
+      }
+    }
+    if (formValues.reference_name) {
+      custom_fields.reference_name = String(formValues.reference_name).trim().toUpperCase();
+    }
+    if (refCodeVal) {
+      custom_fields.referral_code = refCodeVal;
+    }
+
+    // Always preserve participant_type in custom_fields for card display if present
     if (formValues.participant_type) {
       custom_fields.participant_type = formValues.participant_type;
     }
@@ -325,6 +368,7 @@ export function RegisterView({
       if (typeof window !== "undefined" && res.card_access) {
         try {
           window.sessionStorage.setItem(`gsyb_card_access:${res.registration_number}`, res.card_access);
+          window.sessionStorage.setItem(`vadodara_card_access:${res.registration_number}`, res.card_access);
         } catch {}
       }
 
@@ -487,6 +531,7 @@ export function RegisterView({
                 onChange={handleFieldChange}
                 errors={formErrors}
                 disabled={submitting}
+                isReferralApplied={Boolean(ref)}
               />
 
               {/* Full-width High-Impact Primary CTA */}

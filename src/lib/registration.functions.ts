@@ -294,56 +294,100 @@ export const registerParticipant = createServerFn({ method: "POST" })
       age = computeAge(data.date_of_birth, eventDate);
     }
 
-    // Strict Vadodara Yog Shibir option validation
+    // Strict Vadodara Yog Shibir option validation & area mapping
     const cf = { ...(data.custom_fields ?? {}) };
-    if (cf.participant_type) {
-      const pt = String(cf.participant_type).trim();
-      const validTypes = ["Yog Coach", "Yog Trainer", "Yog Sadhak"];
-      if (!validTypes.includes(pt)) {
-        return {
-          ok: false as const,
-          error: "Invalid Participant Type. Allowed options: Yog Coach, Yog Trainer, Yog Sadhak.",
-        };
-      }
-      if (pt === "Yog Trainer") {
-        if (!cf.coach_name || String(cf.coach_name).trim().length === 0) {
-          return { ok: false as const, error: "Coach Name is required for Yog Trainers." };
+    const isVadodara =
+      resolved.event?.slug === "vadodara-yog-shibir" ||
+      event_id === "2caae4eb-03b7-47be-98fa-a4a145867bd2";
+
+    if (isVadodara) {
+      const submittedDistrict = (cf.district ?? districtName ?? "").toString().trim().toUpperCase();
+      const validDistricts = ["VADODARA EAST", "VADODARA WEST", "VADODARA RURAL"];
+      let vDistrict = validDistricts.find((d) => d === submittedDistrict);
+      if (!vDistrict) {
+        if (cf.area_type === "gramya" || cf.rural_taluka) {
+          vDistrict = "VADODARA RURAL";
+        } else if (cf.municipal_zone === "zone_1" || cf.municipal_zone === "zone_2") {
+          vDistrict = "VADODARA EAST";
+        } else if (cf.area_type === "municipal") {
+          vDistrict = "VADODARA WEST";
         }
+      }
+
+      if (!vDistrict) {
+        return {
+          ok: false as const,
+          error: "Please select a valid District (VADODARA EAST, VADODARA WEST, or VADODARA RURAL).",
+        };
+      }
+
+      districtName = vDistrict;
+      cf.district = vDistrict;
+      cf.area_type = vDistrict === "VADODARA RURAL" ? "gramya" : "municipal";
+      if (vDistrict === "VADODARA RURAL") {
+        cf.rural_taluka = "VADODARA RURAL";
+        delete cf.municipal_zone;
       } else {
-        // Coach Name is strictly applicable ONLY for Yog Trainers
-        delete cf.coach_name;
+        cf.municipal_zone = vDistrict;
+        delete cf.rural_taluka;
       }
-    }
 
-    if (cf.zone) {
-      const z = String(cf.zone).trim();
-      const validZones = ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Gramya / Rural"];
-      if (!validZones.includes(z)) {
-        return {
-          ok: false as const,
-          error: "Invalid Zone. Allowed options: Zone 1, Zone 2, Zone 3, Zone 4, Gramya / Rural.",
-        };
+      if (cf.reference_name) {
+        cf.reference_name = String(cf.reference_name).trim().toUpperCase();
       }
-    }
+      if (cf.referral_code || data.ref) {
+        cf.referral_code = String(cf.referral_code || data.ref).trim().toUpperCase();
+      }
+    } else {
+      if (cf.participant_type) {
+        const pt = String(cf.participant_type).trim();
+        const validTypes = ["Yog Coach", "Yog Trainer", "Yog Sadhak"];
+        if (!validTypes.includes(pt)) {
+          return {
+            ok: false as const,
+            error: "Invalid Participant Type. Allowed options: Yog Coach, Yog Trainer, Yog Sadhak.",
+          };
+        }
+        if (pt === "Yog Trainer") {
+          if (!cf.coach_name || String(cf.coach_name).trim().length === 0) {
+            return { ok: false as const, error: "Coach Name is required for Yog Trainers." };
+          }
+        } else {
+          // Coach Name is strictly applicable ONLY for Yog Trainers
+          delete cf.coach_name;
+        }
+      }
 
-    if (data.taluka) {
-      const t = data.taluka.trim();
-      const validTalukas = [
-        "Vadodara (City)",
-        "Vadodara (Rural)",
-        "Dabhoi",
-        "Karjan",
-        "Padra",
-        "Savli",
-        "Shinor",
-        "Waghodia",
-        "Desar",
-      ];
-      if ((districtName === "Vadodara" || data.district_slug === "vadodara-yog-shibir") && !validTalukas.includes(t)) {
-        return {
-          ok: false as const,
-          error: "Invalid Taluka. Please select from the approved Vadodara taluka list.",
-        };
+      if (cf.zone) {
+        const z = String(cf.zone).trim();
+        const validZones = ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Gramya / Rural"];
+        if (!validZones.includes(z)) {
+          return {
+            ok: false as const,
+            error: "Invalid Zone. Allowed options: Zone 1, Zone 2, Zone 3, Zone 4, Gramya / Rural.",
+          };
+        }
+      }
+
+      if (data.taluka) {
+        const t = data.taluka.trim();
+        const validTalukas = [
+          "Vadodara (City)",
+          "Vadodara (Rural)",
+          "Dabhoi",
+          "Karjan",
+          "Padra",
+          "Savli",
+          "Shinor",
+          "Waghodia",
+          "Desar",
+        ];
+        if (districtName === "Vadodara" && !validTalukas.includes(t)) {
+          return {
+            ok: false as const,
+            error: "Invalid Taluka. Please select from the approved taluka list.",
+          };
+        }
       }
     }
 
@@ -354,7 +398,7 @@ export const registerParticipant = createServerFn({ method: "POST" })
       .from("registrations")
       .insert({
         registration_number: "pending",
-        full_name: data.full_name,
+        full_name: data.full_name.trim().toUpperCase(),
         mobile: data.mobile,
         email: data.email ?? null,
         organization: data.organization ?? null,

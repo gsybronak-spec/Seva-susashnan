@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CheckCircle2, Ticket } from "lucide-react";
 import type { FormField, VisibilityRule } from "@/lib/event-config";
 
 export type DynamicFormValues = Record<string, any>;
@@ -20,6 +21,7 @@ interface DynamicFormRendererProps {
   onChange: (key: string, value: any) => void;
   errors?: Record<string, string | null>;
   disabled?: boolean;
+  isReferralApplied?: boolean;
 }
 
 export function isFieldVisible(field: FormField, values: DynamicFormValues): boolean {
@@ -54,6 +56,7 @@ export function DynamicFormRenderer({
   onChange,
   errors = {},
   disabled = false,
+  isReferralApplied = false,
 }: DynamicFormRendererProps) {
   // Sort by order ascending
   const sortedFields = useMemo(() => {
@@ -67,6 +70,8 @@ export function DynamicFormRenderer({
 
         const val = values[field.key];
         const err = errors[field.key];
+        const isRefField = field.key === "referral_code" || field.key === "ref";
+        const hasRefApplied = isRefField && (isReferralApplied || field.readonly);
 
         return (
           <div key={field.key} className="space-y-2 transition-all duration-200">
@@ -76,10 +81,16 @@ export function DynamicFormRenderer({
                 className="text-sm font-semibold text-[#0F3E3E] flex items-center justify-between"
               >
                 <span className="flex items-center gap-1.5">
+                  {isRefField && <Ticket className="h-3.5 w-3.5 text-[#4E7D66]" />}
                   <span>{field.label}</span>
                   {field.required && <span className="text-[#D97706] font-bold text-base leading-none">*</span>}
                 </span>
-                {field.required ? (
+                {hasRefApplied ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 animate-in fade-in">
+                    <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                    Referral Code Applied
+                  </span>
+                ) : field.required ? (
                   <span className="text-[10px] uppercase font-semibold text-[#4E7D66] bg-[#4E7D66]/10 px-1.5 py-0.5 rounded">
                     Required
                   </span>
@@ -93,12 +104,16 @@ export function DynamicFormRenderer({
               field,
               value: val,
               onChange: (v) => onChange(field.key, v),
-              disabled: disabled || field.readonly,
+              disabled: disabled || field.readonly || hasRefApplied,
               hasError: !!err,
             })}
 
-            {field.help && field.type !== "hidden" && (
-              <p className="text-xs text-[#5C7065] leading-relaxed">{field.help}</p>
+            {field.type !== "hidden" && (
+              <p className="text-xs text-[#5C7065] leading-relaxed">
+                {hasRefApplied
+                  ? "Code from invitation link automatically applied."
+                  : field.help}
+              </p>
             )}
 
             {err && (
@@ -131,6 +146,8 @@ function renderFieldControl({
     ? "border-rose-400 ring-1 ring-rose-400/50 bg-rose-50/30"
     : "border-[#E8E0D5] hover:border-[#4E7D66]/60 focus-visible:border-[#0F3E3E] focus-visible:ring-2 focus-visible:ring-[#0F3E3E]/20";
 
+  const isUppercase = field.key === "full_name" || field.key === "referral_code" || field.key === "ref";
+
   switch (field.type) {
     case "text":
       return (
@@ -140,9 +157,15 @@ function renderFieldControl({
           value={value ?? ""}
           placeholder={field.placeholder || ""}
           disabled={disabled}
+          autoCapitalize={isUppercase ? "characters" : undefined}
           autoComplete={field.key === "full_name" ? "name" : undefined}
-          onChange={(e) => onChange(e.target.value)}
-          className={`h-12 bg-white/95 text-base sm:text-sm rounded-xl px-3.5 transition-all shadow-xs ${borderClasses}`}
+          onChange={(e) => {
+            const v = isUppercase ? e.target.value.toUpperCase() : e.target.value;
+            onChange(v);
+          }}
+          className={`h-12 bg-white/95 text-base sm:text-sm rounded-xl px-3.5 transition-all shadow-xs ${
+            isUppercase ? "uppercase font-medium" : ""
+          } ${disabled ? "bg-stone-50 cursor-not-allowed opacity-90" : ""} ${borderClasses}`}
         />
       );
 

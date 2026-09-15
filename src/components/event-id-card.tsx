@@ -151,56 +151,94 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
     // Registration Number
     ctx.fillStyle = "#64748B";
     ctx.font = "bold 14px 'Noto Sans', sans-serif";
-    ctx.fillText("REGISTRATION NO / નોંધણી ક્રમાંક", 60, 320);
+    ctx.fillText("REGISTRATION NO / નોંધણી ક્રમાંક", 60, 325);
 
     ctx.fillStyle = "#0F3E3E";
     ctx.font = "bold 26px monospace";
-    ctx.fillText(card.participant_id, 60, 352);
+    ctx.fillText(card.participant_id, 60, 358);
 
-    // Participant Type & Zone
-    ctx.fillStyle = "#64748B";
-    ctx.font = "bold 14px 'Noto Sans', sans-serif";
-    ctx.fillText("PARTICIPANT TYPE / કેટેગરી", 60, 405);
+    const isFiveField =
+      !card.participant_type ||
+      card.district?.toUpperCase().includes("VADODARA") ||
+      card.event_title?.includes("વડોદરા") ||
+      card.event_title?.toLowerCase().includes("vadodara");
 
-    ctx.fillStyle = "#D97706";
-    ctx.font = "bold 20px 'Noto Sans', sans-serif";
-    ctx.fillText(card.participant_type || "Yog Sadhak", 60, 432);
-
-    // District / Zone / Location
-    ctx.fillStyle = "#64748B";
-    ctx.font = "bold 14px 'Noto Sans', sans-serif";
-    ctx.fillText("DISTRICT & ZONE / જિલ્લો અને ઝોન", 400, 405);
-
-    ctx.fillStyle = "#0F3E3E";
-    ctx.font = "bold 20px 'Noto Sans', sans-serif";
-    const locStr = [card.district, card.zone || card.taluka].filter(Boolean).join(" • ").toUpperCase();
-    ctx.fillText(locStr || "GUJARAT", 400, 432);
-
-    // Reference / Coach
-    const refTitle = card.coach_name
-      ? "COACH NAME / કોચનું નામ"
-      : card.coordinator_name
-      ? "COORDINATOR / સંયોજક"
-      : "REFERENCE / સંદર્ભ";
-    const refValue = card.coach_name || card.coordinator_name || card.reference_name || "DIRECT REGISTRATION";
-
-    ctx.fillStyle = "#64748B";
-    ctx.font = "bold 14px 'Noto Sans', sans-serif";
-    ctx.fillText(refTitle, 60, 485);
-
-    ctx.fillStyle = "#1C2623";
-    ctx.font = "600 20px 'Noto Sans', 'Noto Sans Gujarati', sans-serif";
-    ctx.fillText(refValue.slice(0, 38), 60, 512);
-
-    // Referral Code (if available)
-    if (card.referral_code && card.referral_code.trim()) {
+    if (isFiveField) {
+      // Authoritative 5-Field Vadodara Layout
+      // District
       ctx.fillStyle = "#64748B";
       ctx.font = "bold 14px 'Noto Sans', sans-serif";
-      ctx.fillText("REFERRAL CODE / રેફરલ કોડ", 400, 485);
+      ctx.fillText("DISTRICT / વિસ્તાર", 60, 412);
+
+      ctx.fillStyle = "#0F3E3E";
+      ctx.font = "bold 20px 'Noto Sans', sans-serif";
+      ctx.fillText((card.district || "VADODARA").toUpperCase(), 60, 440);
+
+      // Reference Name
+      ctx.fillStyle = "#64748B";
+      ctx.font = "bold 14px 'Noto Sans', sans-serif";
+      ctx.fillText("REFERENCE NAME / સંદર્ભ", 60, 492);
+
+      ctx.fillStyle = "#1C2623";
+      ctx.font = "600 20px 'Noto Sans', 'Noto Sans Gujarati', sans-serif";
+      ctx.fillText((card.reference_name || "DIRECT REGISTRATION").slice(0, 38), 60, 520);
+
+      // Referral Code (ONLY IF present)
+      if (card.referral_code && card.referral_code.trim()) {
+        ctx.fillStyle = "#64748B";
+        ctx.font = "bold 14px 'Noto Sans', sans-serif";
+        ctx.fillText("REFERRAL CODE / રેફરલ કોડ", 440, 492);
+
+        ctx.fillStyle = "#D97706";
+        ctx.font = "bold 20px monospace";
+        ctx.fillText(card.referral_code.trim().toUpperCase(), 440, 520);
+      }
+    } else {
+      // Participant Type & Zone
+      ctx.fillStyle = "#64748B";
+      ctx.font = "bold 14px 'Noto Sans', sans-serif";
+      ctx.fillText("PARTICIPANT TYPE / કેટેગરી", 60, 405);
 
       ctx.fillStyle = "#D97706";
-      ctx.font = "bold 20px monospace";
-      ctx.fillText(card.referral_code.trim().toUpperCase(), 400, 512);
+      ctx.font = "bold 20px 'Noto Sans', sans-serif";
+      ctx.fillText(card.participant_type || "Yog Sadhak", 60, 432);
+
+      // District / Zone / Location
+      ctx.fillStyle = "#64748B";
+      ctx.font = "bold 14px 'Noto Sans', sans-serif";
+      ctx.fillText("DISTRICT & ZONE / જિલ્લો અને ઝોન", 400, 405);
+
+      ctx.fillStyle = "#0F3E3E";
+      ctx.font = "bold 20px 'Noto Sans', sans-serif";
+      const locStr = [card.district, card.zone || card.taluka].filter(Boolean).join(" • ").toUpperCase();
+      ctx.fillText(locStr || "GUJARAT", 400, 432);
+
+      // Reference / Coach
+      const refTitle = card.coach_name
+        ? "COACH NAME / કોચનું નામ"
+        : card.coordinator_name
+        ? "COORDINATOR / સંયોજક"
+        : "REFERENCE / સંદર્ભ";
+      const refValue = card.coach_name || card.coordinator_name || card.reference_name || "DIRECT REGISTRATION";
+
+      ctx.fillStyle = "#64748B";
+      ctx.font = "bold 14px 'Noto Sans', sans-serif";
+      ctx.fillText(refTitle, 60, 485);
+
+      ctx.fillStyle = "#1C2623";
+      ctx.font = "600 20px 'Noto Sans', 'Noto Sans Gujarati', sans-serif";
+      ctx.fillText(refValue.slice(0, 38), 60, 512);
+
+      // Referral Code (if available)
+      if (card.referral_code && card.referral_code.trim()) {
+        ctx.fillStyle = "#64748B";
+        ctx.font = "bold 14px 'Noto Sans', sans-serif";
+        ctx.fillText("REFERRAL CODE / રેફરલ કોડ", 400, 485);
+
+        ctx.fillStyle = "#D97706";
+        ctx.font = "bold 20px monospace";
+        ctx.fillText(card.referral_code.trim().toUpperCase(), 400, 512);
+      }
     }
 
     // 6. Right Column: Event Check-in QR Code Panel
@@ -350,6 +388,12 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
     );
   }
 
+  const isFiveField =
+    !data.participant_type ||
+    data.district?.toUpperCase().includes("VADODARA") ||
+    data.event_title?.includes("વડોદરા") ||
+    data.event_title?.toLowerCase().includes("vadodara");
+
   return (
     <div className="space-y-6">
       {/* Visual ID Card Preview Container */}
@@ -408,49 +452,95 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
                 <p className="text-xl sm:text-2xl font-bold text-[#1C2623] mt-0.5">{data.participant_name}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                    Registration No / ક્રમાંક
-                  </p>
-                  <p className="text-base sm:text-lg font-mono font-bold text-[#0F3E3E] mt-0.5">
-                    {data.participant_id}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                    Category / કેટેગરી
-                  </p>
-                  <p className="text-sm sm:text-base font-semibold text-[#D97706] mt-0.5">
-                    {data.participant_type || "Yog Sadhak"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 pt-1 border-t border-stone-100">
-                <div>
-                  <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                    District & Zone / જિલ્લો
-                  </p>
-                  <p className="text-xs sm:text-sm font-semibold text-[#0F3E3E] mt-0.5">
-                    {[data.district, data.zone || data.taluka].filter(Boolean).join(" • ") || "Gujarat"}
-                  </p>
-                </div>
-                {(data.coach_name || data.coordinator_name || data.reference_name) && (
-                  <div>
-                    <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                      {data.coach_name
-                        ? "Coach Name"
-                        : data.coordinator_name
-                        ? "Coordinator"
-                        : "Reference"}
-                    </p>
-                    <p className="text-xs sm:text-sm font-medium text-[#1C2623] mt-0.5">
-                      {data.coach_name || data.coordinator_name || data.reference_name}
-                    </p>
+              {isFiveField ? (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                        Registration No / ક્રમાંક
+                      </p>
+                      <p className="text-base sm:text-lg font-mono font-bold text-[#0F3E3E] mt-0.5">
+                        {data.participant_id}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                        District / વિસ્તાર
+                      </p>
+                      <p className="text-sm sm:text-base font-semibold text-[#0F3E3E] mt-0.5">
+                        {data.district || "VADODARA"}
+                      </p>
+                    </div>
                   </div>
-                )}
-              </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-1 border-t border-stone-100">
+                    <div>
+                      <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                        Reference Name / સંદર્ભ
+                      </p>
+                      <p className="text-xs sm:text-sm font-medium text-[#1C2623] mt-0.5">
+                        {data.reference_name || "DIRECT REGISTRATION"}
+                      </p>
+                    </div>
+                    {data.referral_code && (
+                      <div>
+                        <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                          Referral Code / રેફરલ કોડ
+                        </p>
+                        <p className="text-xs sm:text-sm font-mono font-bold text-[#D97706] mt-0.5">
+                          {data.referral_code}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                        Registration No / ક્રમાંક
+                      </p>
+                      <p className="text-base sm:text-lg font-mono font-bold text-[#0F3E3E] mt-0.5">
+                        {data.participant_id}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                        Category / કેટેગરી
+                      </p>
+                      <p className="text-sm sm:text-base font-semibold text-[#D97706] mt-0.5">
+                        {data.participant_type || "Yog Sadhak"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-1 border-t border-stone-100">
+                    <div>
+                      <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                        District & Zone / જિલ્લો
+                      </p>
+                      <p className="text-xs sm:text-sm font-semibold text-[#0F3E3E] mt-0.5">
+                        {[data.district, data.zone || data.taluka].filter(Boolean).join(" • ") || "Gujarat"}
+                      </p>
+                    </div>
+                    {(data.coach_name || data.coordinator_name || data.reference_name) && (
+                      <div>
+                        <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                          {data.coach_name
+                            ? "Coach Name"
+                            : data.coordinator_name
+                            ? "Coordinator"
+                            : "Reference"}
+                        </p>
+                        <p className="text-xs sm:text-sm font-medium text-[#1C2623] mt-0.5">
+                          {data.coach_name || data.coordinator_name || data.reference_name}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* QR Code Panel */}

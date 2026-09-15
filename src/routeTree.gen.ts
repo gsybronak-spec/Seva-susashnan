@@ -19,9 +19,11 @@ import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as SuccessRouteImport } from './routes/success'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as VadodaraScannerRouteImport } from './routes/vadodara-scanner'
 import { Route as EventIndexRouteImport } from './routes/$event.index'
 import { Route as EventCertificateRouteImport } from './routes/$event.certificate'
 import { Route as EventRegisterRouteImport } from './routes/$event.register'
+import { Route as EventScannerRouteImport } from './routes/$event.scanner'
 import { Route as EventSuccessRouteImport } from './routes/$event.success'
 import { Route as AdminCheckinRouteImport } from './routes/admin.checkin'
 import { Route as CampaignsIndexRouteImport } from './routes/campaigns.index'
@@ -82,6 +84,11 @@ const TermsRoute = TermsRouteImport.update({
   path: '/terms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VadodaraScannerRoute = VadodaraScannerRouteImport.update({
+  id: '/vadodara-scanner',
+  path: '/vadodara-scanner',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EventIndexRoute = EventIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -95,6 +102,11 @@ const EventCertificateRoute = EventCertificateRouteImport.update({
 const EventRegisterRoute = EventRegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => EventRoute,
+} as any)
+const EventScannerRoute = EventScannerRouteImport.update({
+  id: '/scanner',
+  path: '/scanner',
   getParentRoute: () => EventRoute,
 } as any)
 const EventSuccessRoute = EventSuccessRouteImport.update({
@@ -154,8 +166,10 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRouteWithChildren
   '/success': typeof SuccessRoute
   '/terms': typeof TermsRoute
+  '/vadodara-scanner': typeof VadodaraScannerRoute
   '/$event/certificate': typeof EventCertificateRoute
   '/$event/register': typeof EventRegisterRoute
+  '/$event/scanner': typeof EventScannerRoute
   '/$event/success': typeof EventSuccessRoute
   '/admin/checkin': typeof AdminCheckinRoute
   '/campaigns/$slug': typeof CampaignsSlugRouteWithChildren
@@ -177,8 +191,10 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRouteWithChildren
   '/success': typeof SuccessRoute
   '/terms': typeof TermsRoute
+  '/vadodara-scanner': typeof VadodaraScannerRoute
   '/$event/certificate': typeof EventCertificateRoute
   '/$event/register': typeof EventRegisterRoute
+  '/$event/scanner': typeof EventScannerRoute
   '/$event/success': typeof EventSuccessRoute
   '/admin/checkin': typeof AdminCheckinRoute
   '/verify/$cert': typeof VerifyCertRoute
@@ -201,8 +217,10 @@ export interface FileRoutesById {
   '/register': typeof RegisterRouteWithChildren
   '/success': typeof SuccessRoute
   '/terms': typeof TermsRoute
+  '/vadodara-scanner': typeof VadodaraScannerRoute
   '/$event/certificate': typeof EventCertificateRoute
   '/$event/register': typeof EventRegisterRoute
+  '/$event/scanner': typeof EventScannerRoute
   '/$event/success': typeof EventSuccessRoute
   '/admin/checkin': typeof AdminCheckinRoute
   '/campaigns/$slug': typeof CampaignsSlugRouteWithChildren
@@ -227,8 +245,10 @@ export interface FileRouteTypes {
     | '/register'
     | '/success'
     | '/terms'
+    | '/vadodara-scanner'
     | '/$event/certificate'
     | '/$event/register'
+    | '/$event/scanner'
     | '/$event/success'
     | '/admin/checkin'
     | '/campaigns/$slug'
@@ -250,8 +270,10 @@ export interface FileRouteTypes {
     | '/register'
     | '/success'
     | '/terms'
+    | '/vadodara-scanner'
     | '/$event/certificate'
     | '/$event/register'
+    | '/$event/scanner'
     | '/$event/success'
     | '/admin/checkin'
     | '/verify/$cert'
@@ -273,8 +295,10 @@ export interface FileRouteTypes {
     | '/register'
     | '/success'
     | '/terms'
+    | '/vadodara-scanner'
     | '/$event/certificate'
     | '/$event/register'
+    | '/$event/scanner'
     | '/$event/success'
     | '/admin/checkin'
     | '/campaigns/$slug'
@@ -298,6 +322,7 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRouteWithChildren
   SuccessRoute: typeof SuccessRoute
   TermsRoute: typeof TermsRoute
+  VadodaraScannerRoute: typeof VadodaraScannerRoute
   CampaignsSlugRoute: typeof CampaignsSlugRouteWithChildren
   VerifyCertRoute: typeof VerifyCertRoute
   CampaignsIndexRoute: typeof CampaignsIndexRoute
@@ -375,6 +400,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TermsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vadodara-scanner': {
+      id: '/vadodara-scanner'
+      path: '/vadodara-scanner'
+      fullPath: '/vadodara-scanner'
+      preLoaderRoute: typeof VadodaraScannerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$event/': {
       id: '/$event/'
       path: '/'
@@ -394,6 +426,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/$event/register'
       preLoaderRoute: typeof EventRegisterRouteImport
+      parentRoute: typeof EventRoute
+    }
+    '/$event/scanner': {
+      id: '/$event/scanner'
+      path: '/scanner'
+      fullPath: '/$event/scanner'
+      preLoaderRoute: typeof EventScannerRouteImport
       parentRoute: typeof EventRoute
     }
     '/$event/success': {
@@ -465,6 +504,7 @@ declare module '@tanstack/react-router' {
 interface EventRouteChildren {
   EventCertificateRoute: typeof EventCertificateRoute
   EventRegisterRoute: typeof EventRegisterRoute
+  EventScannerRoute: typeof EventScannerRoute
   EventSuccessRoute: typeof EventSuccessRoute
   EventIndexRoute: typeof EventIndexRoute
   EventPartnerSlugRoute: typeof EventPartnerSlugRoute
@@ -473,6 +513,7 @@ interface EventRouteChildren {
 const EventRouteChildren: EventRouteChildren = {
   EventCertificateRoute: EventCertificateRoute,
   EventRegisterRoute: EventRegisterRoute,
+  EventScannerRoute: EventScannerRoute,
   EventSuccessRoute: EventSuccessRoute,
   EventIndexRoute: EventIndexRoute,
   EventPartnerSlugRoute: EventPartnerSlugRoute,
@@ -527,6 +568,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRouteWithChildren,
   SuccessRoute: SuccessRoute,
   TermsRoute: TermsRoute,
+  VadodaraScannerRoute: VadodaraScannerRoute,
   CampaignsSlugRoute: CampaignsSlugRouteWithChildren,
   VerifyCertRoute: VerifyCertRoute,
   CampaignsIndexRoute: CampaignsIndexRoute,
