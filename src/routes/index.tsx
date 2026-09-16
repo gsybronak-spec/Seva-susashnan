@@ -29,6 +29,9 @@ import { listPublicEvents } from "@/lib/event.functions";
  */
 
 export const Route = createFileRoute("/")({
+  loader: async () => {
+    return await listPublicEvents();
+  },
   component: RootHome,
   head: () => ({
     meta: [
@@ -413,11 +416,13 @@ function WorkflowStrip() {
    ============================================================ */
 
 function RootHome() {
+  const initialData = Route.useLoaderData();
   const list = useServerFn(listPublicEvents);
 
   const eventsQ = useQuery({
     queryKey: ["public-events"],
     queryFn: () => list(),
+    initialData,
     staleTime: 15_000,
     refetchOnWindowFocus: true,
   });
