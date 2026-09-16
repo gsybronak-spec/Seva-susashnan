@@ -15,6 +15,13 @@ export type EventGeneral = {
   duration_minutes: number;
   speaker_name: string;
   speaker_designation: string;
+  event_time?: string | null;
+  contact_mobile?: string | null;
+  contact_mobiles?: string[];
+  registration_mode?: "internal" | "external";
+  registration_enabled?: boolean;
+  expected_participants?: number;
+  level?: "State" | "Municipal" | "District" | string;
 };
 
 export type EventFeatures = {

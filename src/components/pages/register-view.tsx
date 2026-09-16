@@ -19,6 +19,7 @@ import {
   Award,
   Loader2,
   CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 
 export type RegisterViewProps = {
@@ -163,7 +164,7 @@ export function RegisterView({
         readonly: !(coverageDistricts && coverageDistricts.length > 0),
         unique: false,
         hidden: false,
-        default_value: districtName || "Vadodara",
+        default_value: districtName || "",
         options: (coverageDistricts ?? []).map((d) => ({ label: d.name, value: d.id })),
         validation: {},
         visible_if: [],
@@ -252,9 +253,10 @@ export function RegisterView({
         }
       }
 
-      if (strVal && field.key === "participant_type") {
-        if (!["Yog Coach", "Yog Trainer", "Yog Sadhak"].includes(strVal)) {
-          errors[field.key] = "Invalid option. Select Yog Coach, Yog Trainer, or Yog Sadhak.";
+      if (strVal && field.type === "dropdown" && field.options && field.options.length > 0) {
+        const validValues = field.options.map((o) => String(o.value ?? o.label).toLowerCase());
+        if (!validValues.includes(strVal.toLowerCase())) {
+          errors[field.key] = `Please select a valid option for ${field.label}.`;
         }
       }
     }
@@ -390,16 +392,29 @@ export function RegisterView({
     }
   }
 
-  const eventTitle = config.general?.title || "Gujarat State Yog Board Camp";
-  const eventDate = config.general?.event_date || "20 September 2026";
+  const eventTitle = config.general?.title || "ગુજરાત રાજ્ય યોગ બોર્ડ યોગ શિબિર";
+  const rawDate = config.general?.event_date || (config as any)?.event_date;
+  const eventDate = rawDate
+    ? new Date(rawDate + (rawDate.length === 10 ? "T00:00:00" : "")).toLocaleDateString("en-IN", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : "";
   const eventTime =
     config.general?.start_time && config.general?.end_time
       ? `${config.general.start_time} – ${config.general.end_time}`
-      : "06:00 AM – 08:00 AM";
+      : config.general?.event_time || (config as any)?.event_time || "સમય ટૂંક સમયમાં જાહેર કરવામાં આવશે";
   const venue =
     config.venue ||
+    (config.general as any)?.venue ||
     (config.general as any)?.venue_address ||
-    "Railway Police Parade Ground, Kothi Kacheri Char Rasta, Vadodara";
+    "સ્થળ ટૂંક સમયમાં જાહેર કરવામાં આવશે";
+  const isRegistrationClosed =
+    config.features?.registration === false ||
+    (config.general as any)?.registration_mode === "external";
+  const contactMobile = config.general?.contact_mobile || (config.general as any)?.contact_mobiles?.[0] || "";
 
   return (
     <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] py-4 sm:py-8 px-3.5 sm:px-6 relative overflow-x-hidden">
@@ -466,7 +481,7 @@ export function RegisterView({
             <div className="pt-2 border-t border-white/15 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               <div className="flex items-center gap-2 text-emerald-100">
                 <Calendar className="w-4 h-4 text-[#F59E0B] shrink-0" />
-                <span><strong>{eventDate}</strong> (રવિવાર)</span>
+                <span><strong>{eventDate || "તારીખ ટૂંક સમયમાં"}</strong></span>
               </div>
               <div className="flex items-center gap-2 text-emerald-100">
                 <Clock className="w-4 h-4 text-[#F59E0B] shrink-0" />
@@ -523,39 +538,63 @@ export function RegisterView({
               </div>
             )}
 
-            {/* Dynamic Form Engine */}
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <DynamicFormRenderer
-                fields={fields}
-                values={formValues}
-                onChange={handleFieldChange}
-                errors={formErrors}
-                disabled={submitting}
-                isReferralApplied={Boolean(ref)}
-              />
-
-              {/* Full-width High-Impact Primary CTA */}
-              <div className="pt-2 space-y-3">
-                <Button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full h-14 bg-[#0F3E3E] hover:bg-[#144D4D] active:scale-[0.99] text-[#FAF8F5] font-bold rounded-xl shadow-lg shadow-[#0F3E3E]/20 text-base flex items-center justify-center gap-2.5 transition-all cursor-pointer"
-                >
-                  {submitting ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                  )}
-                  <span>
-                    {submitting ? "નોંધણી પ્રક્રિયા ચાલુ છે..." : "Complete Registration / નોંધણી કરો"}
-                  </span>
-                </Button>
-
-                <p className="text-[11.5px] text-center text-[#5C7065] leading-relaxed">
-                  🔒 નોંધણી પૂર્ણ થતાં જ તમારો ડિજિટલ ID કાર્ડ અને સત્તાવાર પ્રવેશ QR કોડ તરત જ મળશે.
+            {/* Dynamic Form Engine OR External Registration Notice */}
+            {isRegistrationClosed ? (
+              <div className="p-6 sm:p-8 text-center space-y-4 rounded-xl bg-amber-50/60 border border-amber-200/80">
+                <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-800 mx-auto">
+                  <AlertCircle className="h-6 w-6" />
+                </div>
+                <h3 className="text-lg font-bold text-[#0F3E3E]">
+                  બાહ્ય પોર્ટલ પર નોંધણી / Registration on External Portal
+                </h3>
+                <p className="text-sm text-[#5C7065] max-w-md mx-auto leading-relaxed">
+                  આ શિબિર માટે નોંધણી અન્ય વ્યવસ્થા અથવા સત્તાવાર બાહ્ય પોર્ટલ દ્વારા સંચાલિત કરવામાં આવે છે.
                 </p>
+                {contactMobile && (
+                  <div className="p-3 bg-white/80 border border-amber-200/50 rounded-xl inline-block text-xs font-semibold text-[#0F3E3E]">
+                    વધુ માહિતી અને સહાય માટે સંપર્ક: <span className="font-bold font-mono text-brand-primary">{contactMobile}</span>
+                  </div>
+                )}
+                <div className="pt-2">
+                  <Button asChild variant="outline" className="border-[#E8E0D5] text-[#0F3E3E] hover:bg-white rounded-xl">
+                    <a href="/#events">તમામ કાર્યક્રમો જુઓ (View Other Events)</a>
+                  </Button>
+                </div>
               </div>
-            </form>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <DynamicFormRenderer
+                  fields={fields}
+                  values={formValues}
+                  onChange={handleFieldChange}
+                  errors={formErrors}
+                  disabled={submitting}
+                  isReferralApplied={Boolean(ref)}
+                />
+
+                {/* Full-width High-Impact Primary CTA */}
+                <div className="pt-2 space-y-3">
+                  <Button
+                    type="submit"
+                    disabled={submitting}
+                    className="w-full h-14 bg-[#0F3E3E] hover:bg-[#144D4D] active:scale-[0.99] text-[#FAF8F5] font-bold rounded-xl shadow-lg shadow-[#0F3E3E]/20 text-base flex items-center justify-center gap-2.5 transition-all cursor-pointer"
+                  >
+                    {submitting ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                    )}
+                    <span>
+                      {submitting ? "નોંધણી પ્રક્રિયા ચાલુ છે..." : "Complete Registration / નોંધણી કરો"}
+                    </span>
+                  </Button>
+
+                  <p className="text-[11.5px] text-center text-[#5C7065] leading-relaxed">
+                    🔒 નોંધણી પૂર્ણ થતાં જ તમારો ડિજિટલ ID કાર્ડ અને સત્તાવાર પ્રવેશ QR કોડ તરત જ મળશે.
+                  </p>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       </div>

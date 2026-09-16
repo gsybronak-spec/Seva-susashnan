@@ -210,7 +210,8 @@ export const registerParticipant = createServerFn({ method: "POST" })
 
     // Registration open? (feature toggle on the district's active event)
     const features = (resolved.event.features ?? {}) as { registration?: boolean };
-    if (features.registration === false) {
+    const general = (resolved.event.general ?? {}) as { registration_enabled?: boolean; registration_mode?: string };
+    if (features.registration === false || general.registration_enabled === false || general.registration_mode === "external") {
       return {
         ok: false as const,
         error: "Registrations are currently closed for this district.",
@@ -339,55 +340,28 @@ export const registerParticipant = createServerFn({ method: "POST" })
         cf.referral_code = String(cf.referral_code || data.ref).trim().toUpperCase();
       }
     } else {
-      if (cf.participant_type) {
-        const pt = String(cf.participant_type).trim();
-        const validTypes = ["Yog Coach", "Yog Trainer", "Yog Sadhak"];
-        if (!validTypes.includes(pt)) {
-          return {
-            ok: false as const,
-            error: "Invalid Participant Type. Allowed options: Yog Coach, Yog Trainer, Yog Sadhak.",
-          };
-        }
-        if (pt === "Yog Trainer") {
-          if (!cf.coach_name || String(cf.coach_name).trim().length === 0) {
-            return { ok: false as const, error: "Coach Name is required for Yog Trainers." };
-          }
-        } else {
-          // Coach Name is strictly applicable ONLY for Yog Trainers
-          delete cf.coach_name;
-        }
+      // Generic multi-event dynamic fields:
+      // Clean and preserve custom fields configured by Admin for this event without hardcoded values
+      if (cf.reference_name) {
+        cf.reference_name = String(cf.reference_name).trim().toUpperCase();
       }
-
+      if (cf.referral_code || data.ref) {
+        cf.referral_code = String(cf.referral_code || data.ref).trim().toUpperCase();
+      }
       if (cf.zone) {
-        const z = String(cf.zone).trim();
-        const validZones = ["Zone 1", "Zone 2", "Zone 3", "Zone 4", "Gramya / Rural"];
-        if (!validZones.includes(z)) {
-          return {
-            ok: false as const,
-            error: "Invalid Zone. Allowed options: Zone 1, Zone 2, Zone 3, Zone 4, Gramya / Rural.",
-          };
-        }
+        cf.zone = String(cf.zone).trim();
       }
-
-      if (data.taluka) {
-        const t = data.taluka.trim();
-        const validTalukas = [
-          "Vadodara (City)",
-          "Vadodara (Rural)",
-          "Dabhoi",
-          "Karjan",
-          "Padra",
-          "Savli",
-          "Shinor",
-          "Waghodia",
-          "Desar",
-        ];
-        if (districtName === "Vadodara" && !validTalukas.includes(t)) {
-          return {
-            ok: false as const,
-            error: "Invalid Taluka. Please select from the approved taluka list.",
-          };
-        }
+      if (cf.area) {
+        cf.area = String(cf.area).trim();
+      }
+      if (cf.participant_type) {
+        cf.participant_type = String(cf.participant_type).trim();
+      }
+      if (cf.coach_name) {
+        cf.coach_name = String(cf.coach_name).trim();
+      }
+      if (cf.coordinator_name) {
+        cf.coordinator_name = String(cf.coordinator_name).trim();
       }
     }
 

@@ -43,14 +43,12 @@ export const getEventConfig = createServerFn({ method: "POST" })
 // Minimal, secret-free column set for the public event selection landing
 // page. Deliberately excludes qr_token / youtube_live_url / admin flags.
 const PUBLIC_LIST_COLUMNS =
-  "id, slug, district_id, district_name, district, event_date, event_time, venue, general, features, status, lifecycle_status, publish_status, archived_at, is_template, created_at";
+  "id, slug, type, district_id, district_name, district, event_date, event_time, venue, max_registrations, general, features, status, lifecycle_status, publish_status, archived_at, is_template, created_at";
 
 /**
- * Events currently open for registration, for the public homepage cards.
- * Availability = published + non-template + not archived/cancelled +
- * registration feature enabled + inside the configured registration window.
- * No "latest event" / default / active-event fallbacks: the caller
- * renders exactly the events listed here, nothing else.
+ * Events currently published for the public homepage cards.
+ * Returns all active/upcoming published non-template events.
+ * Clearly differentiates internal registration vs external/closed registration.
  */
 export const listPublicEvents = createServerFn({ method: "GET" }).handler(async () => {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -67,16 +65,9 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
   const openRows = (rows ?? []).filter((r) => {
     const rec = r as unknown as {
       lifecycle_status?: string | null;
-      features?: { registration?: boolean } | null;
       general?: { registration_open_at?: string | null; registration_close_at?: string | null } | null;
     };
     if (rec.lifecycle_status === "archived" || rec.lifecycle_status === "cancelled") return false;
-    if (rec.features?.registration === false) return false;
-    const g = rec.general ?? {};
-    const openAt = g.registration_open_at ? new Date(g.registration_open_at).getTime() : null;
-    const closeAt = g.registration_close_at ? new Date(g.registration_close_at).getTime() : null;
-    if (openAt != null && Number.isFinite(openAt) && now < openAt) return false;
-    if (closeAt != null && Number.isFinite(closeAt) && now > closeAt) return false;
     return true;
   });
   if (openRows.length === 0) return { ok: true as const, rows: [] };
@@ -106,14 +97,18 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
       const rec = r as unknown as {
         id: string;
         slug: string | null;
+        type?: string | null;
         district_id?: string | null;
         district_name?: string | null;
         district?: string | null;
         event_date?: string | null;
         event_time?: string | null;
         venue?: string | null;
+        max_registrations?: number | null;
+        features?: { registration?: boolean } | null;
         general?: {
           title?: string;
+          level?: string;
           event_date?: string | null;
           end_date?: string | null;
           start_time?: string | null;
@@ -121,6 +116,12 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
           event_time?: string | null;
           venue?: string | null;
           venue_address?: string | null;
+          contact_mobile?: string | null;
+          contact_mobiles?: string[] | null;
+          registration_mode?: string | null;
+          expected_participants?: number | null;
+          registration_open_at?: string | null;
+          registration_close_at?: string | null;
           coverage?: { type?: string; district_ids?: string[] | null } | null;
         } | null;
         status?: { value?: string } | null;
@@ -136,9 +137,20 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
           .map((id) => nameById.get(id))
           .filter((v): v is string => !!v);
       }
+
+      const openAt = g.registration_open_at ? new Date(g.registration_open_at).getTime() : null;
+      const closeAt = g.registration_close_at ? new Date(g.registration_close_at).getTime() : null;
+      const isWindowOpen =
+        (openAt == null || !Number.isFinite(openAt) || now >= openAt) &&
+        (closeAt == null || !Number.isFinite(closeAt) || now <= closeAt);
+
+      const isRegEnabled = rec.features?.registration !== false && g.registration_mode !== "external" && isWindowOpen;
+
       return {
         id: rec.id,
         slug: rec.slug,
+        type: rec.type,
+        level: g.level || rec.type || "District",
         title: g.title ?? "",
         event_date: g.event_date ?? rec.event_date ?? null,
         end_date: g.end_date ?? null,
@@ -150,6 +162,10 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
         coverage_district_names: names,
         district_id: rec.district_id ?? null,
         status: rec.status?.value ?? null,
+        registration_enabled: isRegEnabled,
+        registration_mode: g.registration_mode || (rec.features?.registration === false ? "external" : "internal"),
+        contact_mobile: g.contact_mobile || (Array.isArray(g.contact_mobiles) ? g.contact_mobiles.join(" / ") : null),
+        expected_participants: g.expected_participants || rec.max_registrations || null,
       };
     }),
   };

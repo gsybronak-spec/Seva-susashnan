@@ -295,17 +295,21 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
     ctx.lineTo(1196, 608);
     ctx.stroke();
 
+    const dateText = card.event_date ? `તારીખ: ${card.event_date}` : "તારીખ: ટૂંક સમયમાં જાહેર થશે";
+    const timeText = card.event_time ? `સમય: ${card.event_time}` : "સમય: ટૂંક સમયમાં જાહેર થશે";
+    const venueText = card.venue ? `સ્થળ: ${card.venue}` : "સ્થળ: ટૂંક સમયમાં જાહેર થશે";
+
     ctx.fillStyle = "#0F3E3E";
     ctx.font = "bold 18px 'Noto Sans Gujarati', 'Noto Sans', sans-serif";
     ctx.fillText(
-      `તારીખ: ${card.event_date || "20 September 2026"}   |   સમય: ${card.event_time || "06:00 AM – 08:00 AM"}`,
+      `${dateText}   |   ${timeText}`,
       60,
       646,
     );
 
     ctx.fillStyle = "#1C2623";
     ctx.font = "500 16px 'Noto Sans Gujarati', 'Noto Sans', sans-serif";
-    ctx.fillText(`સ્થળ: ${card.venue || "Railway Police Parade Ground, Vadodara"}`, 60, 680);
+    ctx.fillText(venueText, 60, 680);
 
     ctx.fillStyle = "#4E7D66";
     ctx.font = "600 13px 'Noto Sans Gujarati', 'Noto Sans', sans-serif";
@@ -567,9 +571,9 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
           <div className="pt-4 border-t border-[#E8E0D5] bg-[#FAF8F5] -mx-5 -mb-5 sm:-mx-8 sm:-mb-8 p-4 sm:p-5 rounded-b-2xl">
             <div className="text-xs font-medium text-[#0F3E3E] space-y-1">
               <p className="font-bold">
-                તારીખ: {data.event_date} &bull; સમય: {data.event_time}
+                તારીખ: {data.event_date || "ટૂંક સમયમાં જાહેર થશે"} &bull; સમય: {data.event_time || "ટૂંક સમયમાં જાહેર થશે"}
               </p>
-              <p className="text-[#2D4A3E]">સ્થળ: {data.venue}</p>
+              <p className="text-[#2D4A3E]">સ્થળ: {data.venue || "સ્થળ ટૂંક સમયમાં જાહેર કરવામાં આવશે"}</p>
               <p className="text-[10.5px] text-[#5C7065] pt-0.5">
                 સત્તાવાર ડિજિટલ પ્રવેશ પાસ • ગુજરાત રાજ્ય યોગ બોર્ડ • હેલ્પલાઇન: 1800-233-9642
               </p>

@@ -439,12 +439,46 @@ function GeneralForm({ config }: { config: EventConfig }) {
         <Field label="Subtitle"><Input value={v.subtitle} onChange={(e) => setV({ ...v, subtitle: e.target.value })} /></Field>
         <Field label="Theme / Tagline"><Input value={v.theme} onChange={(e) => setV({ ...v, theme: e.target.value })} /></Field>
         <Field label="Banner Image URL"><Input value={v.banner_url} onChange={(e) => setV({ ...v, banner_url: e.target.value })} placeholder="https://..." /></Field>
-        <Field label="Venue (शिबिर स्थळ)">
+        <Field label="Venue (शिबिर स्थળ)">
           <Input
             value={venue}
             onChange={(e) => setVenue(e.target.value)}
             placeholder="e.g. Yogagram ground, Junagadh"
             maxLength={300}
+          />
+        </Field>
+        <Field label="Contact Mobile(s)">
+          <Input
+            value={(v as any).contact_mobile ?? ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              const parts = val.split(/[,/]/).map((s: string) => s.trim()).filter(Boolean);
+              setV({ ...v, contact_mobile: val, contact_mobiles: parts } as any);
+            }}
+            placeholder="e.g. 9826200631 or 9826200631 / 8200607328"
+          />
+        </Field>
+        <Field label="Registration Mode">
+          <Select
+            value={(v as any).registration_mode || "internal"}
+            onValueChange={(val) => setV({ ...v, registration_mode: val } as any)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select mode" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="internal">Internal (Portal Registration)</SelectItem>
+              <SelectItem value="external">External / Closed (e.g. Vadodara)</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="Expected Participants">
+          <Input
+            type="number"
+            min={0}
+            value={(v as any).expected_participants ?? ""}
+            onChange={(e) => setV({ ...v, expected_participants: Number(e.target.value) || 0 } as any)}
+            placeholder="e.g. 5000"
           />
         </Field>
       </div>

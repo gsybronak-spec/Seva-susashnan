@@ -185,15 +185,28 @@ export const getEventIdCard = createServerFn({ method: "POST" })
 
     const signedQr = await signToken(card.token_id as string, eventId);
 
-    const eventTitle = (general.title as string) || "Gujarat State Yog Board Event";
-    const eventDate = eventRow?.event_date || (general.event_date as string) || "20 September 2026";
-    const eventTime = eventRow?.event_time || (general.event_time as string) || "06:00 AM – 08:00 AM";
-    const venue = eventRow?.venue || (general.venue as string) || "Railway Police Parade Ground, Vadodara";
+    const eventTitle = (general.title as string) || "ગુજરાત રાજ્ય યોગ બોર્ડ યોગ શિબિર";
+    const rawDate = eventRow?.event_date || (general.event_date as string);
+    const eventDate = rawDate
+      ? new Date(rawDate + (rawDate.length === 10 ? "T00:00:00" : "")).toLocaleDateString("en-IN", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })
+      : "";
+    const eventTime =
+      (general.start_time && general.end_time
+        ? `${general.start_time} – ${general.end_time}`
+        : null) ||
+      eventRow?.event_time ||
+      (general.event_time as string) ||
+      "";
+    const venue = eventRow?.venue || (general.venue as string) || (general.venue_address as string) || "";
 
     const participantType = String(cf.participant_type || registration.designation || "").trim();
     const zone = String(cf.zone || cf.municipal_zone || "").trim();
     const taluka = String(cf.taluka || cf.rural_taluka || registration.taluka || "").trim();
-    const district = String(registration.district || cf.district || "Vadodara").trim();
+    const district = String(registration.district || cf.district || "").trim();
     const coachName = String(cf.coach_name || "").trim();
     const coordinatorName = String(cf.coordinator_name || "").trim();
     const referenceName = String(registration.referred_by || cf.reference_name || "").trim();

@@ -11,6 +11,8 @@ import {
   Award,
   UserCheck,
   Sparkles,
+  Phone,
+  Users,
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { listPublicEvents } from "@/lib/event.functions";
@@ -48,6 +50,8 @@ type PublicEventRow = {
   id: string;
   slug: string | null;
   title: string;
+  level?: string | null;
+  type?: string | null;
   event_date: string | null;
   end_date?: string | null;
   start_time?: string | null;
@@ -57,6 +61,10 @@ type PublicEventRow = {
   coverage_type: "single" | "zone" | "state";
   coverage_district_names: string[];
   status: string | null;
+  registration_enabled: boolean;
+  registration_mode?: string | null;
+  contact_mobile?: string | null;
+  expected_participants?: number | null;
 };
 
 function formatEventDate(iso: string | null): string {
@@ -208,7 +216,12 @@ function EventsSection({
                 (e.coverage_district_names && e.coverage_district_names.length > 0
                   ? e.coverage_district_names.join(", ")
                   : null);
-              const registrationStatus = e.status || "Registrations Open";
+              const levelLabel =
+                e.level === "State"
+                  ? "રાજ્ય કક્ષા (State Level)"
+                  : e.level === "Municipal"
+                    ? "મહાનગરપાલિકા (Municipal)"
+                    : "જિલ્લા કક્ષા (District)";
 
               return (
                 <div
@@ -216,12 +229,23 @@ function EventsSection({
                   className="flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-sm transition hover:border-brand-primary/40 hover:shadow-md"
                 >
                   <div>
-                    {/* Header Status Badge */}
+                    {/* Header Badges: Level + Registration Status */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/80 pb-3">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                        {registrationStatus}
+                      <span className="inline-flex items-center gap-1 rounded-md bg-brand-primary/10 px-2.5 py-0.5 text-xs font-semibold text-brand-primary">
+                        {levelLabel}
                       </span>
+
+                      {e.registration_enabled ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                          નોંધણી ચાલુ (Open)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                          બાહ્ય પોર્ટલ પર નોંધણી
+                        </span>
+                      )}
                     </div>
 
                     {/* Event Title */}
@@ -238,17 +262,41 @@ function EventsSection({
                         </div>
                       )}
 
-                      {eventTimeStr && (
-                        <div className="flex items-start gap-2.5">
-                          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" />
-                          <span>{eventTimeStr}</span>
+                      <div className="flex items-start gap-2.5">
+                        <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" />
+                        <span className={eventTimeStr ? "text-foreground font-medium" : "text-muted-foreground italic"}>
+                          {eventTimeStr || "સમય ટૂંક સમયમાં જાહેર કરવામાં આવશે"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-start gap-2.5">
+                        <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" />
+                        <span className={`leading-relaxed ${venueStr ? "text-foreground" : "text-muted-foreground italic"}`}>
+                          {venueStr || "સ્થળ ટૂંક સમયમાં જાહેર કરવામાં આવશે"}
+                        </span>
+                      </div>
+
+                      {e.expected_participants != null && e.expected_participants > 0 && (
+                        <div className="flex items-center gap-2.5">
+                          <Users className="h-4 w-4 shrink-0 text-brand-primary" />
+                          <span>
+                            અપેક્ષિત સંખ્યા:{" "}
+                            <strong className="font-medium text-foreground">
+                              {Number(e.expected_participants).toLocaleString("en-IN")}
+                            </strong>
+                          </span>
                         </div>
                       )}
 
-                      {venueStr && (
-                        <div className="flex items-start gap-2.5">
-                          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" />
-                          <span className="leading-relaxed">{venueStr}</span>
+                      {e.contact_mobile && (
+                        <div className="flex items-center gap-2.5">
+                          <Phone className="h-4 w-4 shrink-0 text-brand-primary" />
+                          <span>
+                            સંપર્ક:{" "}
+                            <strong className="font-mono text-foreground font-semibold">
+                              {e.contact_mobile}
+                            </strong>
+                          </span>
                         </div>
                       )}
                     </div>
@@ -256,14 +304,27 @@ function EventsSection({
 
                   {/* Action CTA Button */}
                   <div className="mt-6 pt-2">
-                    <Link
-                      to="/$event/register"
-                      params={{ event: e.slug ?? "" }}
-                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-semibold text-white shadow-xs transition hover:opacity-90 active:scale-[0.99]"
-                    >
-                      <span>નોંધણી કરો</span>
-                      <ArrowRight className="h-4 w-4" />
-                    </Link>
+                    {e.registration_enabled ? (
+                      <Link
+                        to="/$event/register"
+                        params={{ event: e.slug ?? "" }}
+                        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-semibold text-white shadow-xs transition hover:opacity-90 active:scale-[0.99]"
+                      >
+                        <span>નોંધણી કરો (Register Now)</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-muted/80 text-muted-foreground px-5 text-xs sm:text-sm font-semibold border border-border">
+                          <span>બાહ્ય પોર્ટલ પર નોંધણી (External Portal)</span>
+                        </div>
+                        {e.contact_mobile && (
+                          <p className="text-[11px] text-center text-muted-foreground">
+                            વધુ વિગતો માટે સંપર્ક: <span className="font-mono font-bold text-foreground">{e.contact_mobile}</span>
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
