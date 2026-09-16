@@ -160,7 +160,7 @@ function LoginCard({ onLoggedIn }: { onLoggedIn: () => void }) {
             />
           </div>
           <Button type="submit" className="h-11 w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? "Logging in..." : "Login"}
           </Button>
           <div className="pt-2 text-center">
             <button

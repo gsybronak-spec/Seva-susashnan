@@ -631,19 +631,23 @@ export const adminLogin = createServerFn({ method: "POST" })
     }
 
     let ok = false;
-    // Bootstrap: super admin without a password uses ADMIN_PASSWORD env once
-    if (!user.password_hash) {
-      if (user.role !== "super_admin") {
-        return {
-          ok: false as const,
-          error: "Account is not yet activated. Ask a Super Admin to set a password.",
-        };
+    // Super admin authentication via server-side ADMIN_PASSWORD environment variable
+    if (user.role === "super_admin" && process.env.ADMIN_PASSWORD) {
+      ok = await constantTimeEqualStrings(data.password, process.env.ADMIN_PASSWORD);
+      if (!ok && user.password_hash) {
+        ok = await verifyPassword(data.password, user.password_hash);
       }
+    } else if (user.password_hash) {
+      ok = await verifyPassword(data.password, user.password_hash);
+    } else if (user.role === "super_admin") {
       const bootstrap = process.env.ADMIN_PASSWORD;
-      if (!bootstrap) return { ok: false as const, error: "Bootstrap password not configured." };
+      if (!bootstrap) return { ok: false as const, error: "Admin password not configured." };
       ok = await constantTimeEqualStrings(data.password, bootstrap);
     } else {
-      ok = await verifyPassword(data.password, user.password_hash);
+      return {
+        ok: false as const,
+        error: "Account is not yet activated. Ask a Super Admin to set a password.",
+      };
     }
 
     if (!ok) {
@@ -662,12 +666,12 @@ export const adminLogin = createServerFn({ method: "POST" })
       userId: user.id,
       username: user.username,
       role: user.role as AdminRole,
-      mustChangePassword: !user.password_hash || user.must_change_password,
+      mustChangePassword: Boolean(user.must_change_password),
     });
     return {
       ok: true as const,
       role: user.role as AdminRole,
-      must_change_password: !user.password_hash || user.must_change_password,
+      must_change_password: Boolean(user.must_change_password),
     };
   });
 
