@@ -60,7 +60,7 @@ const PROGRAMS_MASTER = [
     district_name: "Vadodara",
     level: "Municipal",
     mobiles: ["8866155977"],
-    venue: "Railway Police Parade Ground, Kothi Kacheri Char Rasta, Behind Kothi Kacheri, Vadodara, Gujarat",
+    venue: null, // BLANK IN PDF
     expected: 10000,
     date: "2026-09-20",
     prefix: "VAD",
@@ -730,8 +730,8 @@ async function run() {
           district_id: distRec.id,
           district_name: distRec.name,
           event_date: p.date,
-          // Do NOT touch venue if already present
-          venue: existing?.venue || p.venue,
+          // Set venue to null as per authoritative PDF
+          venue: p.venue,
           max_registrations: p.expected,
           reg_prefix: p.prefix,
           features: {
@@ -753,9 +753,9 @@ async function run() {
             registration_mode: "external", // Explicit external mode
             registration_enabled: false,
             event_date: p.date,
-            start_time: currentGeneral.start_time ?? null,
-            end_time: currentGeneral.end_time ?? null,
-            event_time: currentGeneral.event_time ?? null,
+            start_time: null,
+            end_time: null,
+            event_time: null,
           },
           updated_at: new Date().toISOString(),
         })
