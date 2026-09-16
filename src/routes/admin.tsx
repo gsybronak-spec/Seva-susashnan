@@ -260,7 +260,7 @@ function ResetSuperAdminDialog({
             <Label htmlFor="recovery-key">Server Recovery Key</Label>
             <PasswordInput
               id="recovery-key"
-              placeholder="ADMIN_RESET_KEY, ADMIN_PASSWORD, or SESSION_SECRET"
+              placeholder="Enter server recovery key"
               value={recoveryKey}
               onChange={(e) => setRecoveryKey(e.target.value)}
               required
