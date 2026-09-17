@@ -37,12 +37,16 @@ CREATE TABLE IF NOT EXISTS public.event_scanners (
   is_active boolean NOT NULL DEFAULT true,
   revoked_at timestamptz,
   created_by uuid REFERENCES public.admin_users(id) ON DELETE RESTRICT,
-  last_activity_at timestamptz,
+  mobile text,
+  last_login_at timestamptz,
   total_scans integer NOT NULL DEFAULT 0 CHECK (total_scans >= 0),
+  successful_scans integer NOT NULL DEFAULT 0 CHECK (successful_scans >= 0),
   duplicate_attempts integer NOT NULL DEFAULT 0 CHECK (duplicate_attempts >= 0),
+  invalid_scans integer NOT NULL DEFAULT 0 CHECK (invalid_scans >= 0),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS event_scanners_code_lower_idx ON public.event_scanners (lower(scanner_code));
 GRANT ALL ON public.event_scanners TO service_role;
 ALTER TABLE public.event_scanners ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "event_scanners_service_only" ON public.event_scanners;
@@ -135,12 +139,15 @@ BEGIN
   END IF;
 
   IF _method = 'qr' THEN
-    IF _scanner_id IS NULL THEN RAISE EXCEPTION 'unauthorized'; END IF;
-    SELECT * INTO v_scanner FROM public.event_scanners
-     WHERE id = _scanner_id AND event_id = _event_id;
-    IF NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
-    IF v_scanner.revoked_at IS NOT NULL THEN RAISE EXCEPTION 'scanner_revoked'; END IF;
-    IF v_scanner.is_active IS NOT TRUE THEN RAISE EXCEPTION 'scanner_inactive'; END IF;
+    IF _scanner_id IS NOT NULL THEN
+      SELECT * INTO v_scanner FROM public.event_scanners
+       WHERE id = _scanner_id AND event_id = _event_id;
+      IF NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
+      IF v_scanner.revoked_at IS NOT NULL THEN RAISE EXCEPTION 'scanner_revoked'; END IF;
+      IF v_scanner.is_active IS NOT TRUE THEN RAISE EXCEPTION 'scanner_inactive'; END IF;
+    ELSIF _checked_in_by IS NULL THEN
+      RAISE EXCEPTION 'unauthorized';
+    END IF;
   ELSIF _checked_in_by IS NULL THEN
     RAISE EXCEPTION 'unauthorized';
   END IF;
@@ -177,7 +184,8 @@ BEGIN
   IF _scanner_id IS NOT NULL THEN
     UPDATE public.event_scanners SET
       last_activity_at = now(),
-      total_scans = total_scans + CASE WHEN v_result = 'success' THEN 1 ELSE 0 END,
+      total_scans = total_scans + 1,
+      successful_scans = successful_scans + CASE WHEN v_result = 'success' THEN 1 ELSE 0 END,
       duplicate_attempts = duplicate_attempts + CASE WHEN v_result = 'duplicate' THEN 1 ELSE 0 END
     WHERE id = _scanner_id;
   END IF;

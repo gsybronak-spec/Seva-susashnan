@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { listPublicEvents } from "@/lib/event.functions";
+import { formatTimeRange } from "@/lib/event-config";
 
 /**
  * GUJARAT STATE YOG BOARD — Official Digital Event Registration Portal
@@ -86,15 +87,20 @@ function formatEventTime(
   eventTime: string | null | undefined,
   startTime: string | null | undefined,
   endTime: string | null | undefined,
-): string | null {
-  if (eventTime && eventTime.trim().length > 0 && !eventTime.includes("00:00:00")) {
-    return eventTime;
-  }
+): string {
   if (startTime && endTime) {
-    return `${startTime} to ${endTime}`;
+    return formatTimeRange(startTime, endTime);
   }
-  if (startTime) return startTime;
-  return null;
+  if (eventTime && eventTime.trim().length > 0 && !eventTime.includes("00:00:00")) {
+    if (eventTime.includes("AM") || eventTime.includes("PM") || eventTime.includes("–") || eventTime.includes("-")) {
+      return eventTime.trim();
+    }
+    return formatTimeRange(eventTime, endTime);
+  }
+  if (startTime) {
+    return formatTimeRange(startTime, endTime);
+  }
+  return "06:00 AM – 08:00 AM";
 }
 
 /* ============================================================
@@ -214,11 +220,7 @@ function EventsSection({
             {rows.map((e) => {
               const eventDateStr = formatEventDate(e.event_date);
               const eventTimeStr = formatEventTime(e.event_time, e.start_time, e.end_time);
-              const venueStr =
-                e.venue ||
-                (e.coverage_district_names && e.coverage_district_names.length > 0
-                  ? e.coverage_district_names.join(", ")
-                  : null);
+              const venueStr = e.venue && e.venue.trim().length > 0 ? e.venue.trim() : null;
               const levelLabel =
                 e.level === "State"
                   ? "રાજ્ય કક્ષા (State Level)"

@@ -135,6 +135,9 @@ export const adminEventOverview = createServerFn({ method: "GET" }).handler(asyn
 
     title: string;
     district: string | null;
+    district_name?: string | null;
+    level?: string | null;
+    venue?: string | null;
     event_date: string | null;
     event_time: string | null;
     registration_open_at: string | null;
@@ -148,6 +151,34 @@ export const adminEventOverview = createServerFn({ method: "GET" }).handler(asyn
     organisations: number;
   };
   let rows = (data as Row[] | null) ?? [];
+
+  // Enrich with level, venue, and district_name from events table
+  try {
+    const { data: evMeta } = await supabaseAdmin
+      .from("events")
+      .select("id, general, venue, district_name");
+    const metaMap = new Map<string, { level?: string; venue?: string; district_name?: string }>();
+    for (const em of evMeta ?? []) {
+      const lvl = (em.general as { level?: string } | null)?.level;
+      metaMap.set(em.id, {
+        level: lvl,
+        venue: em.venue || undefined,
+        district_name: em.district_name || undefined,
+      });
+    }
+    rows = rows.map((r) => {
+      const m = metaMap.get(r.id);
+      return {
+        ...r,
+        level: m?.level || (r.title?.includes("મહાનગરપાલિકા") ? "Municipal" : "District"),
+        venue: m?.venue || null,
+        district_name: m?.district_name || r.district || null,
+      };
+    });
+  } catch (enrichErr) {
+    console.warn("[adminEventOverview] enrich meta error:", enrichErr);
+  }
+
   // Scope to allowed events for viewer admins
   if (session.role !== "super_admin") {
     const { resolveEventFilter } = await import("@/lib/admin-scope.server");

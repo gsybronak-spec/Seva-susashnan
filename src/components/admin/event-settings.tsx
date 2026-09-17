@@ -377,16 +377,19 @@ function CoverageForm({ config }: { config: EventConfig }) {
   );
 }
 
-function useSaveSection(section: EventSection, id: string) {
+function useSaveSection(section: EventSection, id: string, successMsg = "Saved") {
   const save = useServerFn(adminUpdateEventSection);
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (value: Record<string, unknown>) =>
       save({ data: { id, section, value } }),
     onSuccess: (res) => {
-      if (!res.ok) return toast.error(res.error);
-      toast.success("Saved");
+      if (!res.ok) return toast.error(res.error || "Failed to update event");
+      toast.success(successMsg);
       invalidateEventQueries(qc, id);
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to update event");
     },
   });
 }
@@ -427,11 +430,10 @@ function ToggleRow({
 function GeneralForm({ config }: { config: EventConfig }) {
   const [v, setV] = useState(config.general);
   useEffect(() => setV(config.general), [config.general]);
-  const m = useSaveSection("general", config.id);
-  // Venue is stored in a dedicated column, not inside the general JSONB.
-  const [venue, setVenue] = useState<string>((config as { venue?: string | null }).venue ?? "");
-  useEffect(() => setVenue((config as { venue?: string | null }).venue ?? ""), [config]);
-  const venueSave = useSaveSection("venue", config.id);
+  const m = useSaveSection("general", config.id, "Event updated successfully");
+  // Venue is stored in a dedicated column, and also synchronized into the general JSONB.
+  const [venue, setVenue] = useState<string>((config as { venue?: string | null }).venue ?? (config.general as any)?.venue ?? "");
+  useEffect(() => setVenue((config as { venue?: string | null }).venue ?? (config.general as any)?.venue ?? ""), [config]);
   return (
     <Panel title="Event Details">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -509,10 +511,9 @@ function GeneralForm({ config }: { config: EventConfig }) {
         <Field label="Speaker Designation (optional)"><Input value={v.speaker_designation} onChange={(e) => setV({ ...v, speaker_designation: e.target.value })} /></Field>
       </div>
       <Button onClick={() => {
-        m.mutate(v as unknown as Record<string, unknown>);
-        venueSave.mutate({ venue });
-      }} disabled={m.isPending || venueSave.isPending}>
-        {m.isPending || venueSave.isPending ? "Saving…" : "Save"}
+        m.mutate({ ...v, venue: venue.trim() } as unknown as Record<string, unknown>);
+      }} disabled={m.isPending}>
+        {m.isPending ? "Saving…" : "Save"}
       </Button>
     </Panel>
   );

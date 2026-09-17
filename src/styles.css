@@ -36,6 +36,11 @@
   --color-brand-primary-foreground: var(--brand-primary-foreground);
   --font-sans: "Noto Sans", "Noto Sans Gujarati", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Noto Serif", ui-serif, Georgia, serif;
+  --font-gujarati: "Anek Gujarati", "Hind Vadodara", "Noto Sans Gujarati", sans-serif;
+}
+
+.font-gujarati {
+  font-family: "Anek Gujarati", "Hind Vadodara", "Noto Sans Gujarati", sans-serif;
 }
 
 :root {
@@ -195,4 +200,19 @@
   box-shadow:
     0 1px 2px rgb(28 25 23 / 0.05),
     0 8px 24px -12px rgb(28 25 23 / 0.14);
+}
+
+@keyframes scanLaser {
+  0% {
+    top: 4%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 94%;
+    opacity: 1;
+  }
+  100% {
+    top: 4%;
+    opacity: 0.8;
+  }
 }

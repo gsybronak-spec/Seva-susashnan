@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -45,10 +45,14 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Search,
   Settings,
   Trash2,
+  X,
 } from "lucide-react";
 import { invalidateEventQueries } from "@/lib/query-cache";
+import { formatTimeRange } from "@/lib/event-config";
+import { matchesAdminEventSearch } from "@/lib/admin-search";
 
 
 type EventRow = {
@@ -65,6 +69,7 @@ type EventRow = {
   district_id?: string | null;
   coverage_type?: "single" | "zone" | "state";
   coverage_district_names?: string[];
+  venue?: string | null;
   general: {
     title?: string;
     subtitle?: string;
@@ -72,8 +77,11 @@ type EventRow = {
     end_date?: string | null;
     start_time?: string | null;
     end_time?: string | null;
+    event_time?: string | null;
     registration_open_at?: string | null;
     registration_close_at?: string | null;
+    level?: string | null;
+    venue?: string | null;
   } | null;
   registration_count?: number;
   created_at: string;
@@ -169,12 +177,53 @@ export function EventsManager({
   });
 
   const loadFailed = isError || (data !== undefined && !data.ok);
-  const allRows = (data?.ok ? (data.rows as EventRow[]) : []) ?? [];
+  const allRows = (data?.ok ? (data.rows as unknown as EventRow[]) : []) ?? [];
   const [view, setView] = useState<"events" | "templates">("events");
+  const [search, setSearch] = useState("");
+  const [levelFilter, setLevelFilter] = useState<"all" | "district" | "municipal">("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
   const rows = allRows.filter(
     (w) =>
       (view === "templates" ? !!w.is_template : !w.is_template) &&
       (!campaignFilterId || w.campaign_id === campaignFilterId),
+  );
+
+  const filteredRows = useMemo(() => {
+    return rows.filter((w) => {
+      // Level filter
+      if (levelFilter !== "all") {
+        const isMun =
+          w.general?.level?.toLowerCase() === "municipal" ||
+          (w.general?.title ? w.general.title.includes("મહાનગરપાલિકા") : false);
+        if (levelFilter === "municipal" && !isMun) return false;
+        if (levelFilter === "district" && isMun) return false;
+      }
+
+      // Status filter
+      if (statusFilter !== "all") {
+        if (w.publish_status !== statusFilter) return false;
+      }
+
+      // Search matching
+      if (search.trim()) {
+        const item = {
+          title: w.general?.title,
+          district: w.district,
+          slug: w.slug,
+          level: w.general?.level,
+          coverage_type: w.coverage_type,
+          coverage_district_names: w.coverage_district_names,
+        };
+        if (!matchesAdminEventSearch(item, search)) return false;
+      }
+
+      return true;
+    });
+  }, [rows, search, levelFilter, statusFilter]);
+
+  const hasActiveFilters = Boolean(
+    search.trim() || levelFilter !== "all" || statusFilter !== "all",
   );
 
   const [open, setOpen] = useState(false);
@@ -971,6 +1020,103 @@ export function EventsManager({
       )}
 
       {!loadFailed && (
+      <>
+      {/* Prominent Search and Filter Bar */}
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          {/* Search Input with Search Icon & Clear (X) Button */}
+          <div className="relative flex-1 max-w-xl">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <Input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="જિલ્લો અથવા કાર્યક્રમ શોધો... / Search district or event..."
+              className="h-11 pl-10 pr-10 text-sm bg-background border-border rounded-xl focus-visible:ring-brand-primary"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="w-36 sm:w-40">
+              <Select
+                value={levelFilter}
+                onValueChange={(v) => setLevelFilter(v as typeof levelFilter)}
+              >
+                <SelectTrigger className="h-11 rounded-xl text-xs">
+                  <SelectValue placeholder="All Levels" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Levels / બધા સ્તર</SelectItem>
+                  <SelectItem value="district">District / જિલ્લા</SelectItem>
+                  <SelectItem value="municipal">Municipal / મનપા</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-36 sm:w-40">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-11 rounded-xl text-xs">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status / બધી સ્થિતિ</SelectItem>
+                  <SelectItem value="published">Published</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setLevelFilter("all");
+                  setStatusFilter("all");
+                }}
+                className="h-11 px-3 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+              >
+                Reset
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Dynamic Result Indicator */}
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/50">
+          <div>
+            {hasActiveFilters ? (
+              <span>
+                {rows.length} કાર્યક્રમોમાંથી{" "}
+                <strong className="text-brand-primary font-bold">{filteredRows.length}</strong> પરિણામ
+              </span>
+            ) : (
+              <span>
+                કુલ <strong className="text-foreground font-bold">{rows.length}</strong> કાર્યક્રમો
+              </span>
+            )}
+          </div>
+          {hasActiveFilters && (
+            <span className="text-[11px] text-muted-foreground hidden sm:inline">
+              Real-time filter active
+            </span>
+          )}
+        </div>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full min-w-[1200px] text-sm">
           <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
@@ -988,14 +1134,37 @@ export function EventsManager({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && (
+            {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={10} className="p-6 text-center text-muted-foreground">
-                  {isLoading ? "Loading…" : view === "templates" ? "No templates yet." : "No events yet. Create your first one."}
+                <td colSpan={10} className="p-8 text-center text-muted-foreground">
+                  {isLoading ? (
+                    "Loading…"
+                  ) : hasActiveFilters ? (
+                    <div className="space-y-2">
+                      <p className="font-semibold text-foreground">કોઈ કાર્યક્રમ મળ્યો નથી</p>
+                      <p className="text-xs">તમારી શોધ ફરી તપાસો.</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSearch("");
+                          setLevelFilter("all");
+                          setStatusFilter("all");
+                        }}
+                        className="mt-2 text-xs"
+                      >
+                        Clear Filters &amp; Search
+                      </Button>
+                    </div>
+                  ) : view === "templates" ? (
+                    "No templates yet."
+                  ) : (
+                    "No events yet. Create your first one."
+                  )}
                 </td>
               </tr>
             )}
-            {rows.map((w) => {
+            {filteredRows.map((w) => {
               const rs = regStatus(w);
               return (
               <tr key={w.id} className="border-t border-border align-top">
@@ -1033,12 +1202,12 @@ export function EventsManager({
                   {w.general?.end_date ? ` – ${formatDateShort(w.general.end_date)}` : ""}
                 </td>
                 <td className="p-3 text-xs text-muted-foreground">
-                  {w.general?.start_time ? (
-                    <>
-                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{w.general.start_time}</span>
-                      {w.general.end_time ? ` – ${w.general.end_time}` : ""}
-                    </>
-                  ) : "—"}
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {w.general?.event_time ||
+                     formatTimeRange(w.general?.start_time, w.general?.end_time) ||
+                     "06:00 AM – 08:00 AM"}
+                  </span>
                 </td>
                 <td className="p-3 font-semibold text-brand-primary">{w.registration_count ?? 0}</td>
                 <td className="p-3">
@@ -1126,6 +1295,7 @@ export function EventsManager({
           </tbody>
         </table>
       </div>
+      </>
       )}
 
       {publishConfirm && (

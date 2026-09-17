@@ -6,6 +6,7 @@ import { Menu, X, IdCard, Award, CalendarDays, Home } from "lucide-react";
 import { BRAND } from "@/lib/brand";
 import { getPublicSettings } from "@/lib/registration.functions";
 import { useCurrentEvent } from "@/hooks/use-current-event";
+import { useEventConfig } from "@/hooks/use-event-config";
 
 // Official Gujarat State Yog Board emblem (public/logo-gsyb.png).
 export function BrandEmblem({ className }: { className?: string }) {
@@ -17,6 +18,8 @@ export function BrandEmblem({ className }: { className?: string }) {
     />
   );
 }
+
+export { RegistrationProgramHeader, RegistrationHeader } from "./registration-program-header";
 
 export function SiteHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

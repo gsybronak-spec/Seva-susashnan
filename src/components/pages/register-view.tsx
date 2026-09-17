@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { registerParticipant, lookupReferralCode } from "@/lib/registration.functions";
 import { partnerLookup } from "@/lib/partner.functions";
 import { useEventConfig, type EventConfigInitialData } from "@/hooks/use-event-config";
-import type { FormField } from "@/lib/event-config";
+import { type FormField, formatTimeRange } from "@/lib/event-config";
 import { DynamicFormRenderer } from "@/components/dynamic-form-renderer";
 import {
   Calendar,
@@ -16,7 +16,6 @@ import {
   ShieldCheck,
   Sparkles,
   QrCode,
-  Award,
   Loader2,
   CheckCircle2,
   AlertCircle,
@@ -47,6 +46,16 @@ export function RegisterView({
     initialData,
   );
 
+  const eventLevel = String(config.general?.level || (config as any).type || "").trim().toLowerCase();
+  const isDistrictEvent = eventLevel === "district";
+  const targetDistrict = (
+    districtName ||
+    (config as any).district_name ||
+    (config as any).district ||
+    (config.general as any)?.district ||
+    ""
+  ).trim();
+
   const [submitting, setSubmitting] = useState(false);
   const [partnerInfo, setPartnerInfo] = useState<{
     partner_id: string;
@@ -62,10 +71,11 @@ export function RegisterView({
   }>(() => (ref ? { status: "validating" } : { status: "idle" }));
 
   // Dynamic form state
-  const [formValues, setFormValues] = useState<Record<string, any>>({
+  const [formValues, setFormValues] = useState<Record<string, any>>(() => ({
     ref: ref ? ref.toUpperCase() : "",
     referral_code: ref ? ref.toUpperCase() : "",
-  });
+    ...(isDistrictEvent && targetDistrict ? { district: targetDistrict } : {}),
+  }));
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({});
 
   // Partner lookup
@@ -149,33 +159,67 @@ export function RegisterView({
             help: "Code from invitation link automatically applied.",
           };
         }
+        if (f.key === "district" && isDistrictEvent && targetDistrict) {
+          return {
+            ...f,
+            type: "text",
+            label: f.label || "District / Area",
+            placeholder: targetDistrict,
+            required: true,
+            readonly: true,
+            default_value: targetDistrict,
+            help: "District is pre-filled for this event.",
+            options: [],
+          };
+        }
         return f;
       });
 
-    // If district field isn't present, add it based on coverage
+    // If district field isn't present, add it based on coverage/level
     if (!list.some((f) => f.key === "district")) {
-      list.push({
-        key: "district",
-        type: coverageDistricts && coverageDistricts.length > 0 ? "dropdown" : "text",
-        label: "District",
-        placeholder: "Select District",
-        required: true,
-        enabled: true,
-        readonly: !(coverageDistricts && coverageDistricts.length > 0),
-        unique: false,
-        hidden: false,
-        default_value: districtName || "",
-        options: (coverageDistricts ?? []).map((d) => ({ label: d.name, value: d.id })),
-        validation: {},
-        visible_if: [],
-        builtin: true,
-        order: 6,
-        help: "District where event is organized.",
-      });
+      if (isDistrictEvent && targetDistrict) {
+        list.push({
+          key: "district",
+          type: "text",
+          label: "District / Area",
+          placeholder: targetDistrict,
+          required: true,
+          enabled: true,
+          readonly: true,
+          unique: false,
+          hidden: false,
+          default_value: targetDistrict,
+          options: [],
+          validation: {},
+          visible_if: [],
+          builtin: true,
+          order: 6,
+          help: "District is pre-filled for this event.",
+        });
+      } else {
+        list.push({
+          key: "district",
+          type: coverageDistricts && coverageDistricts.length > 0 ? "dropdown" : "text",
+          label: "District / Area",
+          placeholder: "Select District",
+          required: true,
+          enabled: true,
+          readonly: !(coverageDistricts && coverageDistricts.length > 0),
+          unique: false,
+          hidden: false,
+          default_value: districtName || "",
+          options: (coverageDistricts ?? []).map((d) => ({ label: d.name, value: d.id })),
+          validation: {},
+          visible_if: [],
+          builtin: true,
+          order: 6,
+          help: "District where event is organized.",
+        });
+      }
     }
 
     return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo, ref]);
+  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo, ref, isDistrictEvent, targetDistrict]);
 
   // Initialize default values
   useEffect(() => {
@@ -187,12 +231,18 @@ export function RegisterView({
             next[f.key] = f.default_value;
           }
         }
+        if (isDistrictEvent && targetDistrict) {
+          next.district = targetDistrict;
+        }
         return next;
       });
     }
-  }, [fields]);
+  }, [fields, isDistrictEvent, targetDistrict]);
 
   function handleFieldChange(key: string, value: any) {
+    if (isDistrictEvent && key === "district") {
+      return; // Locked: do not allow modification
+    }
     setFormValues((prev) => {
       const next = { ...prev, [key]: value };
       // If participant_type changed and is not Yog Trainer, clear coach_name
@@ -307,14 +357,18 @@ export function RegisterView({
       }
     }
 
+    const effectiveDistrict = isDistrictEvent && targetDistrict ? targetDistrict : formValues.district;
+
     // 5-field mapping
-    if (formValues.district) {
-      custom_fields.district = formValues.district;
-      custom_fields.area_type = formValues.district === "VADODARA RURAL" ? "gramya" : "municipal";
-      if (formValues.district === "VADODARA RURAL") {
-        custom_fields.rural_taluka = "VADODARA RURAL";
-      } else {
-        custom_fields.municipal_zone = formValues.district;
+    if (effectiveDistrict) {
+      custom_fields.district = effectiveDistrict;
+      if (!isDistrictEvent) {
+        custom_fields.area_type = effectiveDistrict === "VADODARA RURAL" ? "gramya" : "municipal";
+        if (effectiveDistrict === "VADODARA RURAL") {
+          custom_fields.rural_taluka = "VADODARA RURAL";
+        } else {
+          custom_fields.municipal_zone = effectiveDistrict;
+        }
       }
     }
     if (formValues.reference_name) {
@@ -403,13 +457,17 @@ export function RegisterView({
       })
     : "";
   const eventTime =
-    config.general?.start_time && config.general?.end_time
-      ? `${config.general.start_time} – ${config.general.end_time}`
-      : config.general?.event_time || (config as any)?.event_time || "સમય ટૂંક સમયમાં જાહેર કરવામાં આવશે";
+    (config.general?.start_time && config.general?.end_time
+      ? formatTimeRange(config.general.start_time, config.general.end_time)
+      : null) ||
+    config.general?.event_time ||
+    (config as any)?.event_time ||
+    formatTimeRange(config.general?.start_time, config.general?.end_time) ||
+    "06:00 AM – 08:00 AM";
   const venue =
-    config.venue ||
-    (config.general as any)?.venue ||
-    (config.general as any)?.venue_address ||
+    (config.venue && config.venue.trim().length > 0 ? config.venue.trim() : null) ||
+    ((config.general as any)?.venue && (config.general as any).venue.trim().length > 0 ? (config.general as any).venue.trim() : null) ||
+    ((config.general as any)?.venue_address && (config.general as any).venue_address.trim().length > 0 ? (config.general as any).venue_address.trim() : null) ||
     "સ્થળ ટૂંક સમયમાં જાહેર કરવામાં આવશે";
   const isRegistrationClosed =
     config.features?.registration === false ||
@@ -417,7 +475,7 @@ export function RegisterView({
   const contactMobile = config.general?.contact_mobile || (config.general as any)?.contact_mobiles?.[0] || "";
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] py-4 sm:py-8 px-3.5 sm:px-6 relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] pt-3 sm:pt-5 pb-8 sm:pb-12 px-3.5 sm:px-6 relative overflow-x-hidden">
       {/* Subtle Ambient Lotus Watermark (Top Right & Bottom Left) */}
       <div className="fixed -top-12 -right-12 w-64 sm:w-80 h-64 sm:h-80 pointer-events-none opacity-20 z-0">
         <img
@@ -494,15 +552,12 @@ export function RegisterView({
             </div>
 
             {/* Participant Perks */}
-            <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#FEF3C7] border-t border-white/10">
+            <div className="pt-2 flex flex-wrap items-center justify-start gap-4 text-[11px] text-[#FEF3C7] border-t border-white/10">
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> નિઃશુલ્ક પ્રવેશ (Free)
               </span>
               <span className="flex items-center gap-1">
                 <QrCode className="w-3.5 h-3.5 text-[#F59E0B]" /> ડિજિટલ QR પાસ
-              </span>
-              <span className="flex items-center gap-1">
-                <Award className="w-3.5 h-3.5 text-amber-300" /> ઇ-પ્રમાણપત્ર
               </span>
             </div>
           </div>
@@ -555,11 +610,6 @@ export function RegisterView({
                     વધુ માહિતી અને સહાય માટે સંપર્ક: <span className="font-bold font-mono text-brand-primary">{contactMobile}</span>
                   </div>
                 )}
-                <div className="pt-2">
-                  <Button asChild variant="outline" className="border-[#E8E0D5] text-[#0F3E3E] hover:bg-white rounded-xl">
-                    <a href="/#events">તમામ કાર્યક્રમો જુઓ (View Other Events)</a>
-                  </Button>
-                </div>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">

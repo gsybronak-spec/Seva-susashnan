@@ -55,6 +55,7 @@ const PUBLIC_EVENT_COLUMNS = [
   "district_name",
   "event_date",
   "event_time",
+  "venue",
   "registration_open_at",
   "registration_close_at",
   "max_registrations",
@@ -170,7 +171,7 @@ async function fetchPublishedEventForSlug(slug: string): Promise<ResolvedEvent |
   return {
     district_id: district?.id ?? row.district_id ?? null,
     district_slug: district?.slug ?? null,
-    district_name: cleanDistrictName,
+    district_name: cleanDistrictName || row.district_name || row.district || (row.general as any)?.district || null,
     coverage_districts: await resolveEventCoverageDistricts(w),
     event: w,
   };

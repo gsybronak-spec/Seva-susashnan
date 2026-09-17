@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
-import { mergeCoverage } from "@/lib/event-config";
+import { mergeCoverage, formatTimeRange } from "@/lib/event-config";
 import { mergeSectionObjects } from "@/lib/config-merge";
 
 export { mergeSectionObjects };
@@ -154,9 +154,9 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
         title: g.title ?? "",
         event_date: g.event_date ?? rec.event_date ?? null,
         end_date: g.end_date ?? null,
-        start_time: g.start_time ?? null,
+        start_time: g.start_time ?? (typeof rec.event_time === "string" && rec.event_time ? rec.event_time.slice(0, 5) : null),
         end_time: g.end_time ?? null,
-        event_time: g.event_time ?? rec.event_time ?? null,
+        event_time: g.event_time ?? formatTimeRange(g.start_time ?? rec.event_time, g.end_time),
         venue: rec.venue ?? g.venue_address ?? g.venue ?? null,
         coverage_type: cov.type,
         coverage_district_names: names,
@@ -181,7 +181,7 @@ export function stripAdminOnlyFields<T extends Record<string, unknown> | null | 
     "id", "slug", "is_active", "is_template", "template_category",
     "lifecycle_status", "publish_status", "archived_at", "type",
     "description", "district", "district_id", "district_name",
-    "event_date", "event_time", "registration_open_at",
+    "event_date", "event_time", "venue", "registration_open_at",
     "registration_close_at", "max_registrations", "reg_prefix",
     "general", "features", "live", "attendance", "certificate",
     "referral", "whatsapp", "social", "status", "demo_mode",
@@ -412,8 +412,23 @@ export const adminUpdateEventSection = createServerFn({ method: "POST" })
     } else if (data.section === "venue") {
       // Venue is a dedicated column on events (physical camp location).
       const venue = (value as { venue?: unknown }).venue;
-      patch.venue =
+      const venueStr =
         typeof venue === "string" ? venue.trim().slice(0, 300) || null : null;
+      patch.venue = venueStr;
+
+      // Also sync into general so it remains consistent across all surfaces
+      const { data: existing } = await supabaseAdmin
+        .from("events")
+        .select("general")
+        .eq("id", data.id)
+        .maybeSingle();
+      const currentGeneral =
+        (existing?.general as Record<string, unknown> | null) ?? {};
+      patch.general = {
+        ...currentGeneral,
+        venue: venueStr,
+        venue_address: venueStr,
+      };
     } else if (data.section === "general") {
       // Merge into the stored general object — this automatically preserves
       // the coverage key and any other keys not present in the client
@@ -422,15 +437,50 @@ export const adminUpdateEventSection = createServerFn({ method: "POST" })
       value = value as unknown as Record<string, unknown>;
       const { data: existing } = await supabaseAdmin
         .from("events")
-        .select("general")
+        .select("general, venue, event_date, event_time")
         .eq("id", data.id)
         .maybeSingle();
       const currentGeneral =
         (existing?.general as Record<string, unknown> | null) ?? {};
-      patch.general = mergeSectionObjects(
+      const mergedGeneral = mergeSectionObjects(
         currentGeneral,
         value,
       ) as Record<string, unknown>;
+
+      // 1. Sync event_date to top-level Postgres column
+      if (mergedGeneral.event_date !== undefined) {
+        patch.event_date = (mergedGeneral.event_date as string) || null;
+      }
+
+      // 2. Format and sync time
+      const startTime = mergedGeneral.start_time as string | null | undefined;
+      const endTime = mergedGeneral.end_time as string | null | undefined;
+      if (startTime || endTime) {
+        const timeRangeStr = formatTimeRange(startTime, endTime);
+        mergedGeneral.event_time = timeRangeStr;
+        // In Postgres, column event_time is type `time without time zone` (e.g. '06:00:00')
+        if (startTime && typeof startTime === "string" && startTime.trim().length > 0) {
+          const s = startTime.trim();
+          patch.event_time = s.length === 5 ? `${s}:00` : s;
+        } else {
+          patch.event_time = null;
+        }
+      } else if (mergedGeneral.start_time === null || mergedGeneral.start_time === "") {
+        mergedGeneral.event_time = null;
+        patch.event_time = null;
+      }
+
+      // 3. Sync venue if provided in value
+      if ("venue" in value) {
+        const rawVenue = (value as { venue?: unknown }).venue;
+        const venueStr =
+          typeof rawVenue === "string" ? rawVenue.trim().slice(0, 300) || null : null;
+        patch.venue = venueStr;
+        mergedGeneral.venue = venueStr;
+        mergedGeneral.venue_address = venueStr;
+      }
+
+      patch.general = mergedGeneral;
     } else {
       // Merge the incoming snapshot into the stored section instead of
       // replacing it wholesale — sibling keys survive stale/concurrent saves.

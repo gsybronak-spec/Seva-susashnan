@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -52,7 +51,7 @@ export function SuccessView({
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] py-6 sm:py-10 px-3.5 sm:px-6 relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] pt-3 sm:pt-5 pb-8 sm:pb-12 px-3.5 sm:px-6 relative overflow-x-hidden">
       {/* Subtle Lotus Background Accents */}
       <div className="fixed -top-12 -right-12 w-64 sm:w-80 h-64 sm:h-80 pointer-events-none opacity-20 z-0">
         <img

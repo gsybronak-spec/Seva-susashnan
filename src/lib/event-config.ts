@@ -16,6 +16,8 @@ export type EventGeneral = {
   speaker_name: string;
   speaker_designation: string;
   event_time?: string | null;
+  venue?: string | null;
+  venue_address?: string | null;
   contact_mobile?: string | null;
   contact_mobiles?: string[];
   registration_mode?: "internal" | "external";
@@ -627,10 +629,38 @@ export function mergeConfig(row: Partial<EventConfig> | null | undefined): Event
           fields: mergeFormFields((t.fields ?? []) as Partial<FormField>[]),
         }))
       : deepClone(DEFAULT_TEMPLATES);
+  const rowGeneral = ((row.general ?? {}) as Record<string, unknown>);
+  const effectiveEventDate =
+    (rowGeneral.event_date as string | null | undefined) ??
+    ((row as { event_date?: string | null }).event_date ?? null);
+  const effectiveVenue =
+    ((row as { venue?: string | null }).venue ?? null) ??
+    (rowGeneral.venue as string | null | undefined) ??
+    (rowGeneral.venue_address as string | null | undefined) ??
+    null;
+  const rawEventTime = (row as { event_time?: string | null }).event_time;
+  const effectiveStartTime =
+    (rowGeneral.start_time as string | null | undefined) ??
+    (typeof rawEventTime === "string" && rawEventTime ? rawEventTime.slice(0, 5) : null);
+  const effectiveEndTime = (rowGeneral.end_time as string | null | undefined) ?? null;
+  const effectiveEventTime =
+    (rowGeneral.event_time as string | null | undefined) ??
+    formatTimeRange(effectiveStartTime, effectiveEndTime);
+
   return {
     ...DEFAULT_CONFIG,
     ...row,
-    general: { ...DEFAULT_CONFIG.general, ...(row.general ?? {}) },
+    venue: effectiveVenue,
+    general: {
+      ...DEFAULT_CONFIG.general,
+      ...rowGeneral,
+      event_date: effectiveEventDate,
+      venue: effectiveVenue,
+      venue_address: effectiveVenue,
+      start_time: effectiveStartTime,
+      end_time: effectiveEndTime,
+      event_time: effectiveEventTime,
+    },
     features: { ...DEFAULT_CONFIG.features, ...(row.features ?? {}) },
     live: { ...DEFAULT_CONFIG.live, ...(row.live ?? {}) },
     attendance: { ...DEFAULT_CONFIG.attendance, ...(row.attendance ?? {}) },
@@ -718,10 +748,24 @@ export function formatEventDate(dateISO: string | null): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 }
 
-export function formatTimeRange(start: string | null, end: string | null): string {
-  if (!start && !end) return "";
-  if (start && end) return `${start} – ${end}`;
-  return start ?? end ?? "";
+export function formatTimeRange(start: string | null | undefined, end: string | null | undefined): string {
+  if (!start && !end) return "06:00 AM – 08:00 AM";
+  const to12 = (t: string | null | undefined) => {
+    if (!t) return "";
+    const s = t.trim();
+    if (/am|pm/i.test(s)) return s;
+    const parts = s.split(":");
+    if (parts.length < 2) return s;
+    const h = parseInt(parts[0], 10);
+    if (isNaN(h)) return s;
+    const period = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${String(h12).padStart(2, "0")}:${parts[1].slice(0, 2).padStart(2, "0")} ${period}`;
+  };
+  const s12 = to12(start);
+  const e12 = to12(end);
+  if (s12 && e12) return `${s12} – ${e12}`;
+  return s12 || e12 || "06:00 AM – 08:00 AM";
 }
 
 // ---------- Certificate designer ----------

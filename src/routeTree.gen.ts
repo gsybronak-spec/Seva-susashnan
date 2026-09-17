@@ -23,6 +23,7 @@ import { Route as VadodaraScannerRouteImport } from './routes/vadodara-scanner'
 import { Route as EventIndexRouteImport } from './routes/$event.index'
 import { Route as EventCertificateRouteImport } from './routes/$event.certificate'
 import { Route as EventRegisterRouteImport } from './routes/$event.register'
+import { Route as EventScanRouteImport } from './routes/$event.scan'
 import { Route as EventScannerRouteImport } from './routes/$event.scanner'
 import { Route as EventSuccessRouteImport } from './routes/$event.success'
 import { Route as AdminCheckinRouteImport } from './routes/admin.checkin'
@@ -104,6 +105,11 @@ const EventRegisterRoute = EventRegisterRouteImport.update({
   path: '/register',
   getParentRoute: () => EventRoute,
 } as any)
+const EventScanRoute = EventScanRouteImport.update({
+  id: '/scan',
+  path: '/scan',
+  getParentRoute: () => EventRoute,
+} as any)
 const EventScannerRoute = EventScannerRouteImport.update({
   id: '/scanner',
   path: '/scanner',
@@ -169,6 +175,7 @@ export interface FileRoutesByFullPath {
   '/vadodara-scanner': typeof VadodaraScannerRoute
   '/$event/certificate': typeof EventCertificateRoute
   '/$event/register': typeof EventRegisterRoute
+  '/$event/scan': typeof EventScanRoute
   '/$event/scanner': typeof EventScannerRoute
   '/$event/success': typeof EventSuccessRoute
   '/admin/checkin': typeof AdminCheckinRoute
@@ -194,6 +201,7 @@ export interface FileRoutesByTo {
   '/vadodara-scanner': typeof VadodaraScannerRoute
   '/$event/certificate': typeof EventCertificateRoute
   '/$event/register': typeof EventRegisterRoute
+  '/$event/scan': typeof EventScanRoute
   '/$event/scanner': typeof EventScannerRoute
   '/$event/success': typeof EventSuccessRoute
   '/admin/checkin': typeof AdminCheckinRoute
@@ -220,6 +228,7 @@ export interface FileRoutesById {
   '/vadodara-scanner': typeof VadodaraScannerRoute
   '/$event/certificate': typeof EventCertificateRoute
   '/$event/register': typeof EventRegisterRoute
+  '/$event/scan': typeof EventScanRoute
   '/$event/scanner': typeof EventScannerRoute
   '/$event/success': typeof EventSuccessRoute
   '/admin/checkin': typeof AdminCheckinRoute
@@ -248,6 +257,7 @@ export interface FileRouteTypes {
     | '/vadodara-scanner'
     | '/$event/certificate'
     | '/$event/register'
+    | '/$event/scan'
     | '/$event/scanner'
     | '/$event/success'
     | '/admin/checkin'
@@ -273,6 +283,7 @@ export interface FileRouteTypes {
     | '/vadodara-scanner'
     | '/$event/certificate'
     | '/$event/register'
+    | '/$event/scan'
     | '/$event/scanner'
     | '/$event/success'
     | '/admin/checkin'
@@ -298,6 +309,7 @@ export interface FileRouteTypes {
     | '/vadodara-scanner'
     | '/$event/certificate'
     | '/$event/register'
+    | '/$event/scan'
     | '/$event/scanner'
     | '/$event/success'
     | '/admin/checkin'
@@ -428,6 +440,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventRegisterRouteImport
       parentRoute: typeof EventRoute
     }
+    '/$event/scan': {
+      id: '/$event/scan'
+      path: '/scan'
+      fullPath: '/$event/scan'
+      preLoaderRoute: typeof EventScanRouteImport
+      parentRoute: typeof EventRoute
+    }
     '/$event/scanner': {
       id: '/$event/scanner'
       path: '/scanner'
@@ -504,6 +523,7 @@ declare module '@tanstack/react-router' {
 interface EventRouteChildren {
   EventCertificateRoute: typeof EventCertificateRoute
   EventRegisterRoute: typeof EventRegisterRoute
+  EventScanRoute: typeof EventScanRoute
   EventScannerRoute: typeof EventScannerRoute
   EventSuccessRoute: typeof EventSuccessRoute
   EventIndexRoute: typeof EventIndexRoute
@@ -513,6 +533,7 @@ interface EventRouteChildren {
 const EventRouteChildren: EventRouteChildren = {
   EventCertificateRoute: EventCertificateRoute,
   EventRegisterRoute: EventRegisterRoute,
+  EventScanRoute: EventScanRoute,
   EventScannerRoute: EventScannerRoute,
   EventSuccessRoute: EventSuccessRoute,
   EventIndexRoute: EventIndexRoute,

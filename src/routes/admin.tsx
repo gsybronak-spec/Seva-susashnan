@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { BRAND } from "@/lib/brand";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -40,7 +40,6 @@ const EventSettings = lazy(() => import("@/components/admin/event-settings").the
 const EventsManager = lazy(() => import("@/components/admin/events-manager").then(m => ({ default: m.EventsManager })));
 const CampaignsManager = lazy(() => import("@/components/admin/campaigns-manager").then(m => ({ default: m.CampaignsManager })));
 const EventOperationsDashboard = lazy(() => import("@/components/admin/event-operations-dashboard").then(m => ({ default: m.EventOperationsDashboard })));
-const LazyCheckin = lazy(() => import("@/routes/admin.checkin").then(m => ({ default: (m.CheckinPage || m.Route.options.component) as React.ComponentType<{ eventId?: string }> }))); 
 const CertificateManager = lazy(() => import("@/components/admin/certificate-manager").then(m => ({ default: m.CertificateManager })));
 const UserManager = lazy(() => import("@/components/admin/user-manager").then(m => ({ default: m.UserManager })));
 const PartnerManager = lazy(() => import("@/components/admin/partner-manager").then(m => ({ default: m.PartnerManager })));
@@ -60,6 +59,7 @@ import {
   KeyRound,
   LayoutGrid,
   LogOut,
+  QrCode,
   RefreshCcw,
   Search,
   Shield,
@@ -92,11 +92,18 @@ function AdminPage() {
     queryKey: ["admin-check"],
     queryFn: () => check(),
   });
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   if (isLoading) {
     return <div className="mx-auto max-w-3xl px-4 py-10 text-sm text-muted-foreground">Loading…</div>;
   }
   if (!data?.authed) return <LoginCard onLoggedIn={() => refetch()} />;
+
+  // Render dedicated child routes (such as /admin/checkin) directly
+  if (pathname !== "/admin" && pathname !== "/admin/") {
+    return <Outlet />;
+  }
+
   return <Dashboard check={data as CheckData} onLogout={() => refetch()} onRefetchCheck={() => refetch()} />;
 }
 
@@ -529,6 +536,11 @@ function Dashboard({
     () => eventOptions.find((w) => w.id === selectedEventId)?.label ?? "",
     [eventOptions, selectedEventId],
   );
+  const selectedEventSlug = useMemo(() => {
+    const rows = (eventsData?.ok ? eventsData.rows : []) as any[];
+    const match = rows.find((r) => r.id === selectedEventId);
+    return match?.slug || "";
+  }, [eventsData, selectedEventId]);
 
   // Auto-open the mandatory picker whenever the workspace is active but no event has been chosen.
   useEffect(() => {
@@ -804,6 +816,30 @@ function Dashboard({
               Open Workspace
             </Button>
           )}
+          {selectedEventSlug ? (
+            <Button
+              asChild
+              className="bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-semibold shadow-xs"
+            >
+              <a
+                href={`/${selectedEventSlug}/scan`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <QrCode className="mr-2 h-4 w-4 text-[#F59E0B]" />
+                ઓપરેટર સ્કેનર કન્સોલ
+              </a>
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => setWorkspaceTab("checkin")}
+              className="border-[#0F3E3E] text-[#0F3E3E] hover:bg-[#0F3E3E] hover:text-white font-semibold shadow-xs"
+            >
+              <QrCode className="mr-2 h-4 w-4 text-[#F59E0B]" />
+              હાજરી અને સ્કેનર્સ
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setPwdOpen(true)}>
             <KeyRound className="mr-2 h-4 w-4" />
             Change Password
@@ -895,7 +931,7 @@ function Dashboard({
           <TabsTrigger value="dashboard">Dashboard & Participants</TabsTrigger>
           {isSuper && <TabsTrigger value="campaigns">Campaigns</TabsTrigger>}
           {isSuper && <TabsTrigger value="events">Events</TabsTrigger>}
-          <TabsTrigger value="checkin">Check-In</TabsTrigger>
+          <TabsTrigger value="checkin">Check-In & Operators</TabsTrigger>
           {isSuper && <TabsTrigger value="certificates">Certificates</TabsTrigger>}
           {isSuper && <TabsTrigger value="event">Event Settings</TabsTrigger>}
           {(isSuper || check.can_view_partners) && (

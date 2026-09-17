@@ -101,6 +101,24 @@ export const registerParticipant = createServerFn({ method: "POST" })
     // carry the district of the event it actually belongs to, or nothing.
     let districtName = resolved.district_name ?? resolved.district_slug ?? null;
 
+    const eventGeneral = (resolved.event.general ?? {}) as Record<string, any>;
+    const eventLevel = String(eventGeneral.level || resolved.event.type || "").trim().toLowerCase();
+    const isDistrictEvent = eventLevel === "district";
+
+    if (isDistrictEvent) {
+      const trustedDistrict = (
+        resolved.district_name ||
+        resolved.event.district_name ||
+        resolved.event.district ||
+        eventGeneral.district ||
+        districtName ||
+        ""
+      ).trim();
+      if (trustedDistrict) {
+        districtName = trustedDistrict;
+      }
+    }
+
     // Strict coverage-aware district resolution:
     // - Zone: participant MUST submit a district_id present in the event's coverage.district_ids
     // - State: participant MUST submit a district_id present in active districts
@@ -154,36 +172,38 @@ export const registerParticipant = createServerFn({ method: "POST" })
           district_id = d.id;
         }
       }
-      // Prefer the district the participant actually picked in THIS event's
-      // own form (e.g. a "taluka"/"district" dropdown), instead of falling back
-      // to the event slug or a generic state name.
-      const formFields = ((resolved.event as {
-        form?: { fields?: unknown[] } | null;
-      }).form?.fields ?? []) as Array<{
-        key?: string;
-        enabled?: boolean;
-        hidden?: boolean;
-        options?: Array<{ id?: string; label?: string }>;
-      }>;
-      const districtField = formFields.find(
-        (f) =>
-          f &&
-          f.enabled !== false &&
-          f.hidden !== true &&
-          Array.isArray(f.options) &&
-          f.options.length > 0 &&
-          (f.key === "district" || f.key === "taluka"),
-      );
-      if (districtField?.key) {
-        const submitted = data.custom_fields?.[districtField.key];
-        const raw = typeof submitted === "string" ? submitted.trim() : "";
-        if (raw) {
-          const match = (districtField.options ?? []).find(
-            (o) =>
-              (o.label ?? "").toLowerCase() === raw.toLowerCase() ||
-              (o.id ?? "").toLowerCase() === raw.toLowerCase(),
-          );
-          if (match?.label) districtName = match.label;
+      if (!isDistrictEvent) {
+        // Prefer the district the participant actually picked in THIS event's
+        // own form (e.g. a "taluka"/"district" dropdown), instead of falling back
+        // to the event slug or a generic state name.
+        const formFields = ((resolved.event as {
+          form?: { fields?: unknown[] } | null;
+        }).form?.fields ?? []) as Array<{
+          key?: string;
+          enabled?: boolean;
+          hidden?: boolean;
+          options?: Array<{ id?: string; label?: string }>;
+        }>;
+        const districtField = formFields.find(
+          (f) =>
+            f &&
+            f.enabled !== false &&
+            f.hidden !== true &&
+            Array.isArray(f.options) &&
+            f.options.length > 0 &&
+            (f.key === "district" || f.key === "taluka"),
+        );
+        if (districtField?.key) {
+          const submitted = data.custom_fields?.[districtField.key];
+          const raw = typeof submitted === "string" ? submitted.trim() : "";
+          if (raw) {
+            const match = (districtField.options ?? []).find(
+              (o) =>
+                (o.label ?? "").toLowerCase() === raw.toLowerCase() ||
+                (o.id ?? "").toLowerCase() === raw.toLowerCase(),
+            );
+            if (match?.label) districtName = match.label;
+          }
         }
       }
 
@@ -297,6 +317,9 @@ export const registerParticipant = createServerFn({ method: "POST" })
 
     // Strict Vadodara Yog Shibir option validation & area mapping
     const cf = { ...(data.custom_fields ?? {}) };
+    if (isDistrictEvent && districtName) {
+      cf.district = districtName;
+    }
     const isVadodara =
       resolved.event?.slug === "vadodara-yog-shibir" ||
       event_id === "2caae4eb-03b7-47be-98fa-a4a145867bd2";

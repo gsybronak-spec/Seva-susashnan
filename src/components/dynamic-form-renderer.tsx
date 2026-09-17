@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, Ticket } from "lucide-react";
+import { CheckCircle2, Ticket, Lock } from "lucide-react";
 import type { FormField, VisibilityRule } from "@/lib/event-config";
 
 export type DynamicFormValues = Record<string, any>;
@@ -147,6 +147,26 @@ function renderFieldControl({
     : "border-[#E8E0D5] hover:border-[#4E7D66]/60 focus-visible:border-[#0F3E3E] focus-visible:ring-2 focus-visible:ring-[#0F3E3E]/20";
 
   const isUppercase = field.key === "full_name" || field.key === "referral_code" || field.key === "ref";
+
+  if (field.key === "district" && field.readonly) {
+    const displayVal = value ?? field.default_value ?? "";
+    return (
+      <div className="relative flex items-center">
+        <Input
+          id={field.key}
+          type="text"
+          readOnly
+          tabIndex={-1}
+          value={displayVal}
+          placeholder={field.placeholder || ""}
+          className="h-12 w-full rounded-xl pl-3.5 pr-10 text-base sm:text-sm font-medium text-[#0F3E3E] bg-[#FAF8F5] border border-[#E8E0D5] cursor-not-allowed select-none transition-all shadow-xs focus-visible:ring-0 focus-visible:border-[#E8E0D5]"
+        />
+        <div className="absolute right-3.5 flex items-center pointer-events-none text-[#8C9B94]">
+          <Lock className="h-4 w-4" aria-hidden="true" />
+        </div>
+      </div>
+    );
+  }
 
   switch (field.type) {
     case "text":

@@ -70,7 +70,7 @@ function slugify(input: string): string {
 // the `general` JSONB column, which exists in every production DB — a dedicated
 // coverage column may not exist yet and would break this query.
 const EVENT_LIST_COLUMNS =
-  "id, slug, is_active, is_template, template_category, lifecycle_status, publish_status, archived_at, district, district_id, campaign_id, general, created_at, updated_at";
+  "id, slug, is_active, is_template, template_category, lifecycle_status, publish_status, archived_at, district, district_id, campaign_id, general, event_date, event_time, venue, created_at, updated_at";
 
 // ---------------- List ----------------
 export const adminListEvents = createServerFn({ method: "GET" })  .handler(async () => {
@@ -126,6 +126,17 @@ export const adminListEvents = createServerFn({ method: "GET" })  .handler(async
       ok: true as const,
       rows: rowsAll.map((w) => {
         const general = (w.general ?? {}) as Record<string, unknown>;
+        const effDate = (general.event_date as string | null | undefined) ?? (w.event_date as string | null | undefined) ?? null;
+        const effVenue = (w.venue as string | null | undefined) ?? (general.venue as string | null | undefined) ?? null;
+        const effStartTime = (general.start_time as string | null | undefined) ?? (typeof w.event_time === "string" && w.event_time ? w.event_time.slice(0, 5) : null);
+        const effEndTime = (general.end_time as string | null | undefined) ?? null;
+        const mergedGeneral = {
+          ...general,
+          event_date: effDate,
+          venue: effVenue,
+          start_time: effStartTime,
+          end_time: effEndTime,
+        };
         const c = mergeCoverage(general.coverage, (w.district_id as string | null) ?? null);
         let names: string[] = [];
         if (c.type === "single") {
@@ -145,9 +156,10 @@ export const adminListEvents = createServerFn({ method: "GET" })  .handler(async
         }
         return {
           ...w,
+          venue: effVenue,
           coverage_type: c.type,
           coverage_district_names: names,
-          general: general as { title?: string; subtitle?: string; event_date?: string | null; end_date?: string | null; start_time?: string | null; end_time?: string | null; registration_open_at?: string | null; registration_close_at?: string | null },
+          general: mergedGeneral as { title?: string; subtitle?: string; event_date?: string | null; end_date?: string | null; start_time?: string | null; end_time?: string | null; registration_open_at?: string | null; registration_close_at?: string | null },
           registration_count: countById.get(w.id as string) ?? 0,
         };
       }),
@@ -193,7 +205,7 @@ export const adminCreateEvent = createServerFn({ method: "POST" })
           .enum(["district", "state", "national", "event", "training", "workshop", "certification"])
           .optional(),
         event_date: z.string().trim().max(20).optional(),
-        event_time: z.string().trim().max(20).optional(),
+        event_time: z.string().trim().max(50).optional(),
         end_date: z.string().trim().max(20).optional(),
         start_time: z.string().trim().max(10).optional(),
         end_time: z.string().trim().max(10).optional(),

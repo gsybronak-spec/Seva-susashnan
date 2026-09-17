@@ -4,6 +4,7 @@ import {
   Link,
   createRootRouteWithContext,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -12,8 +13,8 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportAppError } from "../lib/error-reporting";
 import { BRAND } from "../lib/brand";
-import { SiteHeader } from "../components/site-header";
-import { SiteFooter } from "../components/site-footer";
+import { SiteHeader, RegistrationHeader, RegistrationProgramHeader } from "../components/site-header";
+import { SiteFooter, RegistrationFooter } from "../components/site-footer";
 import { Toaster } from "sonner";
 
 function NotFoundComponent() {
@@ -104,9 +105,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", type: "image/png", href: "/logo-gsyb.png" },
       { rel: "apple-touch-icon", href: "/logo-gsyb.png" },
       { rel: "manifest", href: "/site.webmanifest" },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Gujarati:wght@400;500;600;700&family=Noto+Serif:wght@400;600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Anek+Gujarati:wght@400;500;600;700;800&family=Hind+Vadodara:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Gujarati:wght@400;500;600;700&family=Noto+Serif:wght@400;600;700&display=swap",
       },
     ],
   }),
@@ -132,15 +135,18 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isRegistrationFlow = Boolean(pathname && /(^|\/)(register|success)(\/|$)/.test(pathname));
+  const isScannerFlow = Boolean(pathname && /(^|\/)(scan|scanner|checkin)(\/|$)/.test(pathname));
 
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen flex-col bg-background">
-        <SiteHeader />
+        {isScannerFlow ? null : isRegistrationFlow ? <RegistrationProgramHeader /> : <SiteHeader />}
         <main className="flex-1">
           <Outlet />
         </main>
-        <SiteFooter />
+        {isScannerFlow ? null : isRegistrationFlow ? <RegistrationFooter /> : <SiteFooter />}
         <Toaster richColors position="top-center" />
       </div>
     </QueryClientProvider>

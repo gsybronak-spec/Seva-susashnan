@@ -96,12 +96,12 @@ export function EventInfoCard({ config }: { config: EventConfig }) {
                   {general.speaker_designation ? `, ${general.speaker_designation}` : ""}
                 </div>
               )}
-              {((config.venue || (general as any).venue)) && (
-                <div className="inline-flex items-center gap-1.5 text-foreground">
-                  <MapPin className="h-4 w-4 text-brand-primary" />
-                  {config.venue || (general as any).venue}
-                </div>
-              )}
+              <div className="inline-flex items-center gap-1.5 text-foreground">
+                {(config.venue && config.venue.trim().length > 0 ? config.venue.trim() : null) ||
+                 ((general as any)?.venue && (general as any).venue.trim().length > 0 ? (general as any).venue.trim() : null) ||
+                 ((general as any)?.venue_address && (general as any).venue_address.trim().length > 0 ? (general as any).venue_address.trim() : null) ||
+                 "સ્થળ ટૂંક સમયમાં જાહેર કરવામાં આવશે"}
+              </div>
             </div>
           </div>
           {features.countdown && start && start.getTime() > Date.now() && (

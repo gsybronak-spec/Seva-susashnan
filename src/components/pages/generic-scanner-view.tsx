@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
+  ArrowLeft,
   Camera,
   CheckCircle2,
   Clock,
@@ -132,8 +133,8 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
 
   // Initial session check
   useEffect(() => {
-    check().then(setSession);
-  }, [check]);
+    check({ data: { event_id: targetEventId } }).then(setSession);
+  }, [check, targetEventId]);
 
   // Clean up camera on unmount
   useEffect(() => {
@@ -281,6 +282,13 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
     }
   }, [facingMode, processToken, scanNext]);
 
+  // Auto-start camera when authenticated
+  useEffect(() => {
+    if (session?.authed && !isCameraActive && !controlsRef.current) {
+      void startCamera();
+    }
+  }, [session?.authed, isCameraActive, startCamera]);
+
   const stopCamera = useCallback(() => {
     if (controlsRef.current) {
       try {
@@ -376,20 +384,32 @@ export function GenericScannerView({ defaultEventId }: { defaultEventId?: string
     <div className="min-h-screen bg-[#FAF8F5] text-[#1C2623] py-8 px-4 sm:px-6">
       <div className="max-w-3xl mx-auto space-y-6">
         {/* Header Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-5 rounded-2xl bg-white/80 backdrop-blur-md border border-[#E8E0D5] shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-5 rounded-2xl bg-white/90 backdrop-blur-md border border-[#E8E0D5] shadow-sm">
           <div>
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <h1 className="text-lg font-bold text-[#0F3E3E] tracking-tight">
-                Live Attendance Scanner
+              <h1 className="text-lg sm:text-xl font-bold text-[#0F3E3E] tracking-tight">
+                QR Scanner / QR કોડ સ્કેનર
               </h1>
             </div>
             <p className="text-xs text-[#5C7065] mt-0.5">
-              {session?.event_title || "Gujarat State Yog Board"} &bull; Continuous Mode
+              {session?.event_title || "Gujarat State Yog Board"} &bull; Live Attendance Verification
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              asChild
+              className="h-9 px-3 border-[#E8E0D5] text-[#0F3E3E] hover:bg-stone-100 font-semibold gap-1.5 shadow-xs"
+            >
+              <a href="/admin">
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span className="text-xs">Admin Dashboard / પરત</span>
+              </a>
+            </Button>
+
             <Button
               variant="outline"
               size="sm"

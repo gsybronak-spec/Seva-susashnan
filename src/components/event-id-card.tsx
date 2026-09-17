@@ -172,7 +172,7 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
 
       ctx.fillStyle = "#0F3E3E";
       ctx.font = "bold 20px 'Noto Sans', sans-serif";
-      ctx.fillText((card.district || "VADODARA").toUpperCase(), 60, 440);
+      ctx.fillText((card.district || "GUJARAT").toUpperCase(), 60, 440);
 
       // Reference Name
       ctx.fillStyle = "#64748B";
@@ -472,7 +472,7 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
                         District / વિસ્તાર
                       </p>
                       <p className="text-sm sm:text-base font-semibold text-[#0F3E3E] mt-0.5">
-                        {data.district || "VADODARA"}
+                        {data.district || "GUJARAT"}
                       </p>
                     </div>
                   </div>

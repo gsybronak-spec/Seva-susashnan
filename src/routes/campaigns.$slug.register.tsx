@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
@@ -118,13 +118,13 @@ function CampaignRegisterPage() {
       <div className="mx-auto max-w-2xl px-4 py-24 text-center">
         <h1 className="text-2xl font-bold text-brand-primary">Registration unavailable</h1>
         <p className="mt-2 text-muted-foreground">{data?.ok === false ? data.error : "Please try again later."}</p>
-        <Link
-          to="/campaigns/$slug"
-          params={{ slug }}
-          className="mt-6 inline-block rounded-md bg-brand-primary px-4 py-2 text-sm text-white"
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-6 inline-block rounded-md bg-brand-primary px-4 py-2 text-sm text-white hover:opacity-90"
         >
-          Back to Campaign
-        </Link>
+          Try Again
+        </button>
       </div>
     );
   }
@@ -138,15 +138,11 @@ function CampaignRegisterPage() {
 
   return (
     <div style={themeStyle((payload.initialData.config as { theme?: CampaignTheme } | null)?.theme)}>
-      <div className="border-b border-border bg-muted/30 px-4 py-3 text-center text-sm">
+      <div className="border-b border-border bg-muted/30 px-4 py-3 text-center text-sm select-none">
         <span className="text-muted-foreground">Campaign: </span>
-        <Link
-          to="/campaigns/$slug"
-          params={{ slug: payload.campaign.slug }}
-          className="font-semibold text-brand-primary hover:underline"
-        >
+        <span className="font-semibold text-brand-primary">
           {payload.campaign.name}
-        </Link>
+        </span>
       </div>
       <RegisterView
         eventSlug={payload.eventSlug}

@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
@@ -14,6 +14,10 @@ import {
   Award,
   CheckCircle2,
   AlertTriangle,
+  Copy,
+  Key,
+  Lock,
+  Phone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,12 +25,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  adminCreateScanner,
+  adminCreateScannerOperator,
   adminEventOverview,
   adminExportEvent,
   adminManualCheckIn,
   adminSearchParticipants,
-  adminSetScannerStatus,
+  adminUpdateScannerOperator,
 } from "@/lib/event-engine.functions";
 
 interface EventOperationsDashboardProps {
@@ -104,22 +108,50 @@ export function EventOperationsDashboard({ eventId }: EventOperationsDashboardPr
             Event Operations & Attendance
           </h2>
           <p className="text-xs sm:text-sm text-[#5C7065] mt-1">
-            Real-time registration statistics, venue QR check-in, operator scanner credentials, and exports.
+            Real-time venue check-in monitoring, dedicated operator console links, and operator management.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <Button asChild variant="outline" className="border-[#E8E0D5] text-[#0F3E3E] h-10 gap-2">
-            <a href={`/admin/checkin?event=${eventId}`} target="_blank" rel="noreferrer">
-              <ExternalLink className="w-4 h-4" />
-              <span>Open Scanner</span>
-            </a>
-          </Button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          {(() => {
+            const eventSlug = (data?.ok && (data as any).event?.slug) || "";
+            const scannerPath = eventSlug ? `/${eventSlug}/scan` : `/admin/checkin?event=${eventId}`;
+            return (
+              <>
+                <Button
+                  asChild
+                  className="bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white h-10 gap-2 font-semibold shadow-xs"
+                >
+                  <a href={scannerPath} target="_blank" rel="noopener noreferrer">
+                    <QrCode className="w-4 h-4 text-[#F59E0B]" />
+                    <span>Open Operator Scanner</span>
+                    <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+                  </a>
+                </Button>
+
+                {eventSlug && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const fullUrl = `${window.location.origin}/${eventSlug}/scan`;
+                      navigator.clipboard.writeText(fullUrl);
+                      toast.success("ઓપરેટર સ્કેનર લિંક કોપી થઈ ગઈ!");
+                    }}
+                    className="h-10 gap-1.5 text-xs font-semibold border-[#E8E0D5]"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-[#0F3E3E]" />
+                    <span>Copy Scanner Link</span>
+                  </Button>
+                )}
+              </>
+            );
+          })()}
 
           <Button
             onClick={exportCsv}
             disabled={isFetching}
-            className="bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white h-10 gap-2 font-semibold"
+            variant="outline"
+            className="h-10 gap-1.5 font-semibold text-xs border-[#E8E0D5]"
           >
             <Download className="w-4 h-4" />
             <span>Export CSV</span>
@@ -161,7 +193,12 @@ export function EventOperationsDashboard({ eventId }: EventOperationsDashboardPr
         </TabsContent>
 
         <TabsContent value="scanners" className="space-y-4">
-          <ScannerManagement eventId={eventId} scanners={data?.ok ? data.scanners : []} onDone={refresh} />
+          <ScannerManagement
+            eventId={eventId}
+            eventSlug={(data?.ok && (data as any).event?.slug) || ""}
+            scanners={data?.ok ? data.scanners : []}
+            onDone={refresh}
+          />
         </TabsContent>
 
         <TabsContent value="breakdown" className="space-y-4">
@@ -323,117 +360,335 @@ function LatestCheckIns({ rows }: { rows: any[] }) {
 
 function ScannerManagement({
   eventId,
+  eventSlug,
   scanners,
   onDone,
 }: {
   eventId: string;
+  eventSlug: string;
   scanners: any[];
   onDone: () => void;
 }) {
-  const create = useServerFn(adminCreateScanner);
-  const update = useServerFn(adminSetScannerStatus);
+  const createOperator = useServerFn(adminCreateScannerOperator);
+  const updateOperator = useServerFn(adminUpdateScannerOperator);
+
   const [name, setName] = useState("");
   const [operator, setOperator] = useState("");
-  const [issuedKey, setIssuedKey] = useState("");
+  const [mobile, setMobile] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+
+  // Success dialog state for newly issued credentials
+  const [newCreds, setNewCreds] = useState<{
+    scannerCode: string;
+    operatorName: string;
+    mobile?: string;
+    password?: string;
+    loginUrl: string;
+  } | null>(null);
+
+  // Reset password state
+  const [resettingId, setResettingId] = useState<string | null>(null);
+  const [newPwd, setNewPwd] = useState("");
+  const [pwdBusy, setPwdBusy] = useState(false);
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
+    if (!name.trim() || !operator.trim() || !password) return;
     setBusy(true);
-    const res = await create({
-      data: { event_id: eventId, scanner_name: name.trim(), operator_name: operator.trim() },
+
+    const loginUrl = `${window.location.origin}/${eventSlug || eventId}/scan`;
+
+    const res = await createOperator({
+      data: {
+        event_id: eventId,
+        scanner_name: name.trim(),
+        operator_name: operator.trim(),
+        mobile: mobile.trim() || undefined,
+        username: username.trim() || undefined,
+        password: password.trim(),
+      },
     });
+
     setBusy(false);
-    if (!res.ok) return toast.error(res.error);
-    setIssuedKey(res.access_key);
+    if (!res.ok) {
+      return toast.error(res.error);
+    }
+
+    setNewCreds({
+      scannerCode: res.scanner_code,
+      operatorName: operator.trim(),
+      mobile: mobile.trim() || undefined,
+      password: password.trim(),
+      loginUrl,
+    });
+
     setName("");
     setOperator("");
+    setMobile("");
+    setUsername("");
+    setPassword("");
+    toast.success("સ્કેનર ઓપરેટર સફળતાપૂર્વક બનાવવામાં આવ્યા!");
     onDone();
   }
 
   async function handleStatus(scannerId: string, action: "activate" | "deactivate" | "revoke") {
-    const res = await update({ data: { event_id: eventId, scanner_id: scannerId, action } });
+    const res = await updateOperator({
+      data: { event_id: eventId, scanner_id: scannerId, action },
+    });
     if (!res.ok) toast.error(res.error);
     else {
-      toast.success(`Scanner ${action}d`);
+      toast.success(`ઓપરેટર સ્થિતિ અપડેટ થઈ: ${action}`);
+      onDone();
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resettingId || !newPwd.trim()) return;
+    setPwdBusy(true);
+    const res = await updateOperator({
+      data: { event_id: eventId, scanner_id: resettingId, password: newPwd.trim() },
+    });
+    setPwdBusy(false);
+    if (!res.ok) toast.error(res.error);
+    else {
+      toast.success("ઓપરેટર પાસવર્ડ બદલાઈ ગયો!");
+      setResettingId(null);
+      setNewPwd("");
       onDone();
     }
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Create Scanner Form */}
       <form
         onSubmit={handleAdd}
-        className="p-5 rounded-2xl bg-white border border-[#E8E0D5] shadow-sm grid gap-3 sm:grid-cols-3 items-end"
+        className="p-5 rounded-2xl bg-white border border-[#E8E0D5] shadow-sm space-y-4"
       >
-        <div className="space-y-1.5">
-          <Label className="text-xs font-semibold text-[#0F3E3E]">Scanner / Gate Name</Label>
-          <Input
-            placeholder="e.g. Gate 1 Main Entrance"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="h-10 text-xs border-[#E8E0D5]"
-            required
-          />
+        <div className="flex items-center justify-between border-b border-[#E8E0D5] pb-3">
+          <div>
+            <h3 className="text-sm font-bold text-[#0F3E3E]">
+              નવા સ્કેનર ઓપરેટર ઉમેરો (Issue Operator Account)
+            </h3>
+            <p className="text-[11px] text-[#5C7065] mt-0.5">
+              સ્થળ પર હાજરી પૂરવા માટે અધિકૃત સ્વયંસેવકો માટે સુરક્ષિત ઓપરેટર એકાઉન્ટ બનાવો.
+            </p>
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs font-semibold text-[#0F3E3E]">Operator Name</Label>
-          <Input
-            placeholder="e.g. Volunteer Ramesh"
-            value={operator}
-            onChange={(e) => setOperator(e.target.value)}
-            className="h-10 text-xs border-[#E8E0D5]"
-            required
-          />
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 items-end">
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold text-[#0F3E3E]">ગેટ / સ્કેનર નામ *</Label>
+            <Input
+              placeholder="e.g. મુખ્ય પ્રવેશદ્વાર Gate 1"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="h-10 text-xs border-[#E8E0D5]"
+              required
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold text-[#0F3E3E]">ઓપરેટરનું નામ *</Label>
+            <Input
+              placeholder="e.g. રમેશભાઈ પટેલ"
+              value={operator}
+              onChange={(e) => setOperator(e.target.value)}
+              className="h-10 text-xs border-[#E8E0D5]"
+              required
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold text-[#0F3E3E]">મોબાઈલ નંબર (૧૦ અંક)</Label>
+            <Input
+              type="tel"
+              placeholder="e.g. 9876543210"
+              value={mobile}
+              onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              className="h-10 text-xs border-[#E8E0D5]"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold text-[#0F3E3E]">ઓપરેટર પાસવર્ડ *</Label>
+            <Input
+              type="text"
+              placeholder="e.g. Yog@2026"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="h-10 text-xs border-[#E8E0D5]"
+              required
+              minLength={4}
+            />
+          </div>
+
+          <div>
+            <Button
+              type="submit"
+              disabled={busy || !name.trim() || !operator.trim() || !password}
+              className="w-full h-10 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-semibold text-xs gap-1.5"
+            >
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+              <span>ઓપરેટર બનાવો</span>
+            </Button>
+          </div>
         </div>
-        <Button
-          type="submit"
-          disabled={busy}
-          className="h-10 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-semibold text-xs gap-1.5"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Issue Scanner Access</span>
-        </Button>
       </form>
 
-      {/* Show Issued Key once */}
-      {issuedKey && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 space-y-2">
-          <p className="text-xs font-bold">
-            ⚠ Copy this scanner access key now. It will not be displayed again:
-          </p>
-          <code className="block p-3 rounded-lg bg-white border border-amber-200 font-mono text-xs select-all break-all text-[#0F3E3E]">
-            {issuedKey}
-          </code>
+      {/* Show Newly Issued Credentials Card */}
+      {newCreds && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 text-emerald-950 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <h4 className="text-xs font-extrabold uppercase tracking-wide text-emerald-800">
+                સ્કેનર ઓપરેટર એકાઉન્ટ તૈયાર છે! (Copy Credentials)
+              </h4>
+            </div>
+            <button
+              onClick={() => setNewCreds(null)}
+              className="text-emerald-700 hover:text-emerald-900 text-xs"
+            >
+              ✕ બંધ કરો
+            </button>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-2 bg-white p-3 rounded-xl border border-emerald-200 text-xs font-mono">
+            <div>
+              <span className="text-[#64748B] text-[10px] block">ઓપરેટર યુઝરનેમ:</span>
+              <strong className="text-[#0F3E3E] text-sm">{newCreds.scannerCode}</strong>
+            </div>
+            <div>
+              <span className="text-[#64748B] text-[10px] block">પાસવર્ડ:</span>
+              <strong className="text-emerald-800 text-sm">{newCreds.password}</strong>
+            </div>
+            <div>
+              <span className="text-[#64748B] text-[10px] block">સ્કેનર લોગિન લિંક:</span>
+              <span className="text-stone-700 truncate block text-[11px]">{newCreds.loginUrl}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                const text = `ગુજરાત રાજ્ય યોગ બોર્ડ સ્કેનર કન્સોલ\nઓપરેટર: ${newCreds.operatorName}\nયુઝરનેમ: ${newCreds.scannerCode}\nપાસવર્ડ: ${newCreds.password}\nસ્કેનર લિંક: ${newCreds.loginUrl}`;
+                navigator.clipboard.writeText(text);
+                toast.success("તમામ વિગતો ક્લિપબોર્ડમાં કોપી થઈ ગઈ!");
+              }}
+              className="h-8 bg-emerald-700 hover:bg-emerald-600 text-white text-xs gap-1.5 font-semibold"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Copy All Details to Share</span>
+            </Button>
+          </div>
         </div>
       )}
 
+      {/* Reset Password Modal / Inline Box */}
+      {resettingId && (
+        <form
+          onSubmit={handleResetPassword}
+          className="p-4 rounded-xl bg-amber-50 border border-amber-300 flex flex-wrap items-end gap-3 text-xs"
+        >
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-amber-900">નવો પાસવર્ડ દાખલ કરો</Label>
+            <Input
+              type="text"
+              placeholder="નવો ગુપ્ત પાસવર્ડ..."
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+              className="h-9 text-xs border-amber-300 bg-white"
+              required
+              minLength={4}
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={pwdBusy || !newPwd.trim()}
+            className="h-9 bg-amber-700 hover:bg-amber-600 text-white text-xs font-bold"
+          >
+            {pwdBusy ? "અપડેટ થાય છે..." : "પાસવર્ડ સાચવો"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setResettingId(null)}
+            className="h-9 text-xs"
+          >
+            રદ કરો
+          </Button>
+        </form>
+      )}
+
       {/* Scanners List */}
-      <div className="space-y-2">
+      <div className="space-y-2.5">
+        <div className="flex items-center justify-between px-1">
+          <h4 className="text-xs font-bold uppercase text-[#5C7065]">
+            નોંધાયેલ સ્કેનર ઓપરેટરો ({scanners.length})
+          </h4>
+        </div>
+
         {scanners.map((s) => (
           <div
             key={s.id}
-            className="p-4 rounded-xl bg-white border border-[#E8E0D5] shadow-sm flex flex-wrap items-center justify-between gap-3 text-xs"
+            className="p-4 rounded-2xl bg-white border border-[#E8E0D5] shadow-2xs flex flex-wrap items-center justify-between gap-4 text-xs"
           >
-            <div>
+            <div className="space-y-1 min-w-[200px]">
               <div className="flex items-center gap-2 font-bold text-[#0F3E3E]">
                 <QrCode className="w-4 h-4 text-[#D97706]" />
-                <span>{s.scanner_name}</span>
-                <span className="font-mono text-[10px] text-stone-400">({s.scanner_code})</span>
+                <span className="text-sm">{s.scanner_name}</span>
+                <span className="font-mono text-[11px] bg-stone-100 text-stone-700 px-2 py-0.5 rounded-md font-semibold">
+                  {s.scanner_code}
+                </span>
               </div>
-              <p className="text-[#5C7065] mt-0.5">
-                Operator: {s.operator_name} &bull;{" "}
-                <span className={s.revoked_at ? "text-rose-600 font-bold" : s.is_active ? "text-emerald-600 font-bold" : "text-stone-500"}>
-                  {s.revoked_at ? "Revoked" : s.is_active ? "Active" : "Inactive"}
+              <p className="text-[#5C7065]">
+                ઓપરેટર: <strong className="text-stone-800">{s.operator_name}</strong>
+                {s.mobile && (
+                  <span className="font-mono ml-2 text-stone-600 font-medium">({s.mobile})</span>
+                )}
+                <span className="mx-2">&bull;</span>
+                <span
+                  className={
+                    s.revoked_at
+                      ? "text-rose-600 font-bold"
+                      : s.is_active
+                      ? "text-emerald-600 font-bold"
+                      : "text-stone-500 font-bold"
+                  }
+                >
+                  {s.revoked_at ? "● રદ કરેલ (Revoked)" : s.is_active ? "● સક્રિય (Active)" : "○ નિષ્ક્રિય (Inactive)"}
                 </span>
               </p>
-              <p className="text-[10px] text-stone-400 mt-1">
-                Total Scans: {s.total_scans} &bull; Duplicates: {s.duplicate_attempts}
-              </p>
+              <div className="flex flex-wrap gap-3 text-[11px] text-stone-500 pt-1 font-mono">
+                <span>કુલ સ્કેન: <strong className="text-stone-800">{s.total_scans ?? 0}</strong></span>
+                <span>સફળ હાજરી: <strong className="text-emerald-700">{s.successful_scans ?? 0}</strong></span>
+                <span>ડુપ્લીકેટ: <strong className="text-amber-700">{s.duplicate_attempts ?? 0}</strong></span>
+                <span>અમાન્ય: <strong className="text-rose-600">{s.invalid_scans ?? 0}</strong></span>
+                {s.last_login_at && (
+                  <span>છેલ્લું લોગિન: {new Date(s.last_login_at).toLocaleTimeString("en-IN")}</span>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setResettingId(s.id);
+                  setNewPwd("");
+                }}
+                className="h-8 text-xs border-[#E8E0D5]"
+              >
+                <Key className="w-3.5 h-3.5 mr-1" />
+                <span>પાસવર્ડ બદલો</span>
+              </Button>
+
               {!s.revoked_at && (
                 <Button
                   size="sm"
@@ -448,7 +703,11 @@ function ScannerManagement({
                 <Button
                   size="sm"
                   variant="destructive"
-                  onClick={() => handleStatus(s.id, "revoke")}
+                  onClick={() => {
+                    if (confirm(`શું તમે ખરેખર ${s.operator_name} નો સ્કેનર અધિકાર રદ કરવા માંગો છો?`)) {
+                      handleStatus(s.id, "revoke");
+                    }
+                  }}
                   className="h-8 text-xs"
                 >
                   Revoke
@@ -457,9 +716,10 @@ function ScannerManagement({
             </div>
           </div>
         ))}
+
         {scanners.length === 0 && (
           <div className="p-8 text-center rounded-2xl bg-white border border-[#E8E0D5] text-stone-400 text-xs">
-            No scanner operators created yet for this event.
+            આ શિબિર માટે હજુ કોઈ સ્કેનર ઓપરેટર બનાવવામાં આવ્યા નથી. ઉપરથી નવો ઓપરેટર ઉમેરો.
           </div>
         )}
       </div>

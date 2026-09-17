@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -21,8 +21,9 @@ import {
   adminDeleteDistrict,
   adminSetDistrictRegistrationOpen,
 } from "@/lib/district.functions";
-import { Copy, Edit, Link as LinkIcon, MapPin, Plus, Trash2 } from "lucide-react";
+import { Copy, Edit, Link as LinkIcon, MapPin, Plus, Search, Trash2, X } from "lucide-react";
 import { invalidateEventQueries } from "@/lib/query-cache";
+import { matchesAdminEventSearch } from "@/lib/admin-search";
 
 type DistrictRow = {
   id: string;
@@ -74,6 +75,22 @@ export function DistrictManager() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [editRow, setEditRow] = useState<DistrictRow | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filteredRows = useMemo(() => {
+    if (!search.trim()) return rows;
+    return rows.filter((r) =>
+      matchesAdminEventSearch(
+        {
+          title: r.event_title,
+          slug: r.slug,
+          district: r.name,
+          coverage_district_names: [r.name],
+        },
+        search
+      )
+    );
+  }, [rows, search]);
 
   function refresh() {
     invalidateEventQueries(qc);
@@ -191,81 +208,159 @@ export function DistrictManager() {
       )}
 
       {!loadFailed && (
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <table className="w-full min-w-[900px] text-sm">
-          <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="p-3">District</th>
-              <th className="p-3">Event</th>
-              <th className="p-3">Registrations</th>
-              <th className="p-3">Registration</th>
-              <th className="p-3">Active</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="p-6 text-center text-muted-foreground">
-                  {isLoading ? "Loading…" : "No districts yet. Add your first one."}
-                </td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t border-border align-top">
-                <td className="p-3">
-                  <div className="flex items-center gap-2 font-medium text-foreground">
-                    <MapPin className="h-4 w-4 text-brand-primary" />
-                    {r.name}
-                  </div>
-                  <div className="mt-0.5 font-mono text-xs text-muted-foreground">/{r.slug}</div>
-                </td>
-                <td className="p-3">
-                  {r.event_id ? (
-                    <>
-                      <div className="text-xs">{r.event_title || "(untitled)"}</div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {r.event_is_active ? "Active" : "Inactive"}
+        <>
+          {/* Prominent Search Bar */}
+          <div className="rounded-2xl border border-border bg-card p-4 shadow-sm space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative flex-1 max-w-xl">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="જિલ્લો અથવા કાર્યક્રમ શોધો... / Search district or event..."
+                  className="h-11 pl-10 pr-10 text-sm bg-background border-border rounded-xl focus-visible:ring-brand-primary"
+                />
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {search && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSearch("")}
+                  className="h-11 px-3 text-xs text-muted-foreground hover:text-foreground rounded-xl"
+                >
+                  Reset
+                </Button>
+              )}
+            </div>
+
+            {/* Dynamic Result Indicator */}
+            <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t border-border/50">
+              <div>
+                {search.trim() ? (
+                  <span>
+                    {rows.length} જિલ્લાઓમાંથી{" "}
+                    <strong className="text-brand-primary font-bold">{filteredRows.length}</strong> પરિણામ
+                  </span>
+                ) : (
+                  <span>
+                    કુલ <strong className="text-foreground font-bold">{rows.length}</strong> જિલ્લા
+                  </span>
+                )}
+              </div>
+              {search.trim() && (
+                <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                  Real-time search active
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="p-3">District</th>
+                  <th className="p-3">Event</th>
+                  <th className="p-3">Registrations</th>
+                  <th className="p-3">Registration</th>
+                  <th className="p-3">Active</th>
+                  <th className="p-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                      {isLoading ? "Loading…" : "No districts yet. Add your first one."}
+                    </td>
+                  </tr>
+                )}
+                {rows.length > 0 && filteredRows.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-10 text-center space-y-3">
+                      <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground mx-auto">
+                        <Search className="h-6 w-6" />
                       </div>
-                    </>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">No event</span>
-                  )}
-                </td>
-                <td className="p-3">{r.registration_count}</td>
-                <td className="p-3">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={r.registration_open}
-                      disabled={!r.event_id}
-                      onCheckedChange={(v) => onToggleRegistration(r, v)}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {r.registration_open ? "Open" : "Closed"}
-                    </span>
-                  </div>
-                </td>
-                <td className="p-3">
-                  <Switch checked={r.is_active} onCheckedChange={(v) => onToggleActive(r, v)} />
-                </td>
-                <td className="p-3">
-                  <div className="flex flex-col items-end gap-2">
-                    <PublicLinks slug={r.slug} />
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" title="Edit" onClick={() => setEditRow(r)}>
-                        <Edit className="h-4 w-4" />
+                      <h3 className="text-base font-bold text-foreground">કોઈ કાર્યક્રમ અથવા જિલ્લો મળ્યો નથી</h3>
+                      <p className="text-xs text-muted-foreground">તમારી શોધ ફરી તપાસો.</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSearch("")}
+                        className="mt-2 text-xs"
+                      >
+                        Clear Search / શોધ સાફ કરો
                       </Button>
-                      <Button size="icon" variant="ghost" title="Delete" onClick={() => onDelete(r)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    </td>
+                  </tr>
+                )}
+                {filteredRows.map((r) => (
+                  <tr key={r.id} className="border-t border-border align-top">
+                    <td className="p-3">
+                      <div className="flex items-center gap-2 font-medium text-foreground">
+                        <MapPin className="h-4 w-4 text-brand-primary" />
+                        {r.name}
+                      </div>
+                      <div className="mt-0.5 font-mono text-xs text-muted-foreground">/{r.slug}</div>
+                    </td>
+                    <td className="p-3">
+                      {r.event_id ? (
+                        <>
+                          <div className="text-xs">{r.event_title || "(untitled)"}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {r.event_is_active ? "Active" : "Inactive"}
+                          </div>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No event</span>
+                      )}
+                    </td>
+                    <td className="p-3">{r.registration_count}</td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={r.registration_open}
+                          disabled={!r.event_id}
+                          onCheckedChange={(v) => onToggleRegistration(r, v)}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {r.registration_open ? "Open" : "Closed"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <Switch checked={r.is_active} onCheckedChange={(v) => onToggleActive(r, v)} />
+                    </td>
+                    <td className="p-3">
+                      <div className="flex flex-col items-end gap-2">
+                        <PublicLinks slug={r.slug} />
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" title="Edit" onClick={() => setEditRow(r)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" title="Delete" onClick={() => onDelete(r)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {editRow && (

@@ -41,3 +41,17 @@ export function SiteFooter() {
     </footer>
   );
 }
+
+/**
+ * Dedicated Standalone Footer for Registration and Success flows.
+ * Displays only official copyright & department notice with zero links.
+ */
+export function RegistrationFooter() {
+  return (
+    <footer className="mt-12 border-t border-border bg-card/60 py-6 text-center text-xs text-muted-foreground select-none">
+      <div className="mx-auto max-w-6xl px-4">
+        © {new Date().getFullYear()} Gujarat State Yog Board • રમતગમત, યુવા અને સાંસ્કૃતિક પ્રવૃત્તિઓ વિભાગ, ગુજરાત સરકાર.
+      </div>
+    </footer>
+  );
+}

@@ -1,17 +1,47 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Award, HeartPulse, Users, MapPin } from "lucide-react";
-import { useEventConfig } from "@/hooks/use-event-config";
+import { useEventConfig, type EventConfigInitialData } from "@/hooks/use-event-config";
 import { EventInfoCard } from "@/components/event-info-card";
 import { BRAND } from "@/lib/brand";
 
+const loadEventHomeData = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ event: z.string().trim().max(80) }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { resolveEvent } = await import("@/lib/event-resolver.server");
+      const resolved = await resolveEvent(data.event);
+      if (!resolved?.event) {
+        return { initialData: null };
+      }
+      const { stripAdminOnlyFields } = await import("@/lib/event.functions");
+      const initialData: EventConfigInitialData = {
+        config: stripAdminOnlyFields(resolved.event),
+        district_name: resolved.district_name,
+        coverage_districts: resolved.coverage_districts,
+      } as EventConfigInitialData;
+      return { initialData };
+    } catch (err) {
+      console.warn("[loadEventHomeData] error resolving event:", err);
+      return { initialData: null };
+    }
+  });
+
 export const Route = createFileRoute("/$event/")({
+  loader: async ({ params }) => {
+    return await loadEventHomeData({ data: { event: params.event } });
+  },
   component: EventHome,
 });
 
 function EventHome() {
   const { event: eventSlug } = Route.useParams() as { event: string };
-  const { config, districtName } = useEventConfig(eventSlug);
+  const loaderData = Route.useLoaderData();
+  const { config, districtName } = useEventConfig(eventSlug, loaderData?.initialData);
   const { features, general } = config;
 
   const displayName = districtName ?? general.title ?? eventSlug;
