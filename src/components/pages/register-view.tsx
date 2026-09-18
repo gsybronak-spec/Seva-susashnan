@@ -418,7 +418,15 @@ export function RegisterView({
       }
     }
 
-    const effectiveDistrict = isDistrictEvent && targetDistrict ? targetDistrict : formValues.district;
+    const districtField = fields.find((f) => f.key === "district");
+    const hasDistrictOptions = Array.isArray(districtField?.options) && districtField.options.length > 0;
+    const isDistrictDropdown = districtField?.type === "dropdown" || hasDistrictOptions;
+    const effectiveDistrict =
+      isDistrictDropdown && formValues.district
+        ? formValues.district
+        : isDistrictEvent && targetDistrict
+          ? targetDistrict
+          : formValues.district;
 
     // 5-field mapping
     if (effectiveDistrict) {
@@ -433,7 +441,7 @@ export function RegisterView({
       }
     }
     if (formValues.reference_name) {
-      custom_fields.reference_name = String(formValues.reference_name).trim().toUpperCase();
+      custom_fields.reference_name = String(formValues.reference_name).trim();
     }
     if (refCodeVal) {
       custom_fields.referral_code = refCodeVal;

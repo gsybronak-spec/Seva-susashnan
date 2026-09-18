@@ -359,7 +359,7 @@ export const registerParticipant = createServerFn({ method: "POST" })
       }
 
       if (cf.reference_name) {
-        cf.reference_name = String(cf.reference_name).trim().toUpperCase();
+        cf.reference_name = String(cf.reference_name).trim();
       }
       if (cf.referral_code || data.ref) {
         cf.referral_code = String(cf.referral_code || data.ref).trim().toUpperCase();
@@ -368,7 +368,7 @@ export const registerParticipant = createServerFn({ method: "POST" })
       // Generic multi-event dynamic fields:
       // Clean and preserve custom fields configured by Admin for this event without hardcoded values
       if (cf.reference_name) {
-        cf.reference_name = String(cf.reference_name).trim().toUpperCase();
+        cf.reference_name = String(cf.reference_name).trim();
       }
       if (cf.referral_code || data.ref) {
         cf.referral_code = String(cf.referral_code || data.ref).trim().toUpperCase();
