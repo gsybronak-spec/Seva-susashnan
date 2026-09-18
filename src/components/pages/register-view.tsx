@@ -193,25 +193,6 @@ export function RegisterView({
             };
           }
         }
-        if (f.key === "reference_name" && f.type === "dropdown" && Array.isArray(f.options) && f.options.length > 0) {
-          const selectedArea = (formValues.district || "").toString().trim().toLowerCase();
-          let filteredOptions = f.options;
-          if (selectedArea.includes("junagadh city")) {
-            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("vaishali") || o.label.toLowerCase().includes("vaishali"));
-          } else if (selectedArea.includes("junagadh gramya") || selectedArea.includes("junagadh rural")) {
-            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("sonal") || o.value.toLowerCase().includes("jaynti") || o.label.toLowerCase().includes("sonal") || o.label.toLowerCase().includes("jaynti"));
-          } else if (selectedArea.includes("bharuch city")) {
-            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("binita") || o.label.toLowerCase().includes("binita"));
-          } else if (selectedArea.includes("bharuch gramya") || selectedArea.includes("bharuch rural")) {
-            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("kamina") || o.label.toLowerCase().includes("kamina"));
-          } else if (selectedArea.includes("rajkot gramya") || selectedArea.includes("rajkot rural")) {
-            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("hitesh") || o.value.toLowerCase().includes("daksha") || o.label.toLowerCase().includes("hitesh") || o.label.toLowerCase().includes("daksha"));
-          }
-          return {
-            ...f,
-            options: filteredOptions && filteredOptions.length > 0 ? filteredOptions : f.options,
-          };
-        }
         return f;
       });
 
@@ -259,7 +240,7 @@ export function RegisterView({
     }
 
     return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo, ref, isDistrictEvent, targetDistrict, formValues.district]);
+  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo, ref, isDistrictEvent, targetDistrict]);
 
   // Initialize default values
   useEffect(() => {
@@ -295,20 +276,6 @@ export function RegisterView({
       // If participant_type changed and is not Yog Trainer, clear coach_name
       if (key === "participant_type" && value !== "Yog Trainer") {
         delete next.coach_name;
-      }
-      if (key === "district") {
-        const dVal = (value || "").toString().trim().toLowerCase();
-        if (dVal.includes("junagadh city")) {
-          next.reference_name = "Vaishaliben Chudasama";
-        } else if (dVal.includes("bharuch city")) {
-          next.reference_name = "Binitaben Prajapati";
-        } else if (dVal.includes("bharuch gramya")) {
-          next.reference_name = "Kaminaben Raj";
-        } else if (dVal.includes("junagadh gramya")) {
-          if (next.reference_name === "Vaishaliben Chudasama") {
-            delete next.reference_name;
-          }
-        }
       }
       return next;
     });
