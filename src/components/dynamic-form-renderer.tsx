@@ -299,10 +299,11 @@ function renderFieldControl({
           </SelectTrigger>
           <SelectContent className="max-h-64 bg-white border border-[#E8E0D5] shadow-xl rounded-xl">
             {options.map((opt) => {
-              const optVal = opt.value || opt.label;
+              const optVal = String(opt.value || opt.label || "").trim();
+              if (!optVal) return null;
               return (
                 <SelectItem key={optVal} value={optVal} className="text-sm py-2.5 px-3 cursor-pointer">
-                  {opt.label}
+                  {opt.label || opt.value}
                 </SelectItem>
               );
             })}

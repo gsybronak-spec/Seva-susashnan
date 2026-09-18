@@ -71,11 +71,16 @@ export function RegisterView({
   }>(() => (ref ? { status: "validating" } : { status: "idle" }));
 
   // Dynamic form state
-  const [formValues, setFormValues] = useState<Record<string, any>>(() => ({
-    ref: ref ? ref.toUpperCase() : "",
-    referral_code: ref ? ref.toUpperCase() : "",
-    ...(isDistrictEvent && targetDistrict ? { district: targetDistrict } : {}),
-  }));
+  const [formValues, setFormValues] = useState<Record<string, any>>(() => {
+    const rawFields = initialData?.config?.form?.fields ?? [];
+    const districtField = rawFields.find((f: any) => f.key === "district");
+    const hasDistrictOptions = Array.isArray(districtField?.options) && districtField.options.length > 0;
+    return {
+      ref: ref ? ref.toUpperCase() : "",
+      referral_code: ref ? ref.toUpperCase() : "",
+      ...(isDistrictEvent && targetDistrict && !hasDistrictOptions ? { district: targetDistrict } : {}),
+    };
+  });
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({});
 
   // Partner lookup
@@ -159,17 +164,52 @@ export function RegisterView({
             help: "Code from invitation link automatically applied.",
           };
         }
-        if (f.key === "district" && isDistrictEvent && targetDistrict) {
+        if (f.key === "district") {
+          const hasOptions = Array.isArray(f.options) && f.options.length > 0;
+          const isDropdown = f.type === "dropdown" || hasOptions;
+          if (isDropdown) {
+            return {
+              ...f,
+              type: "dropdown",
+              label: f.label || "District / Area",
+              placeholder: f.placeholder || "Select Area / District",
+              required: true,
+              readonly: false,
+              options: f.options,
+              help: f.help || "Select your area/district.",
+            };
+          }
+          if (isDistrictEvent && targetDistrict) {
+            return {
+              ...f,
+              type: "text",
+              label: f.label || "District / Area",
+              placeholder: targetDistrict,
+              required: true,
+              readonly: true,
+              default_value: targetDistrict,
+              help: "District is pre-filled for this event.",
+              options: [],
+            };
+          }
+        }
+        if (f.key === "reference_name" && f.type === "dropdown" && Array.isArray(f.options) && f.options.length > 0) {
+          const selectedArea = (formValues.district || "").toString().trim().toLowerCase();
+          let filteredOptions = f.options;
+          if (selectedArea.includes("junagadh city")) {
+            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("vaishali") || o.label.toLowerCase().includes("vaishali"));
+          } else if (selectedArea.includes("junagadh gramya") || selectedArea.includes("junagadh rural")) {
+            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("sonal") || o.value.toLowerCase().includes("jaynti") || o.label.toLowerCase().includes("sonal") || o.label.toLowerCase().includes("jaynti"));
+          } else if (selectedArea.includes("bharuch city")) {
+            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("binita") || o.label.toLowerCase().includes("binita"));
+          } else if (selectedArea.includes("bharuch gramya") || selectedArea.includes("bharuch rural")) {
+            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("kamina") || o.label.toLowerCase().includes("kamina"));
+          } else if (selectedArea.includes("rajkot gramya") || selectedArea.includes("rajkot rural")) {
+            filteredOptions = f.options.filter((o) => o.value.toLowerCase().includes("hitesh") || o.value.toLowerCase().includes("daksha") || o.label.toLowerCase().includes("hitesh") || o.label.toLowerCase().includes("daksha"));
+          }
           return {
             ...f,
-            type: "text",
-            label: f.label || "District / Area",
-            placeholder: targetDistrict,
-            required: true,
-            readonly: true,
-            default_value: targetDistrict,
-            help: "District is pre-filled for this event.",
-            options: [],
+            options: filteredOptions && filteredOptions.length > 0 ? filteredOptions : f.options,
           };
         }
         return f;
@@ -219,7 +259,7 @@ export function RegisterView({
     }
 
     return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo, ref, isDistrictEvent, targetDistrict]);
+  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo, ref, isDistrictEvent, targetDistrict, formValues.district]);
 
   // Initialize default values
   useEffect(() => {
@@ -232,7 +272,11 @@ export function RegisterView({
           }
         }
         if (isDistrictEvent && targetDistrict) {
-          next.district = targetDistrict;
+          const districtField = fields.find((f) => f.key === "district");
+          const hasDistrictOptions = Array.isArray(districtField?.options) && districtField.options.length > 0;
+          if (!hasDistrictOptions && districtField?.type !== "dropdown" && !next.district) {
+            next.district = targetDistrict;
+          }
         }
         return next;
       });
@@ -240,14 +284,31 @@ export function RegisterView({
   }, [fields, isDistrictEvent, targetDistrict]);
 
   function handleFieldChange(key: string, value: any) {
-    if (isDistrictEvent && key === "district") {
-      return; // Locked: do not allow modification
+    const districtField = fields.find((f) => f.key === "district");
+    const hasDistrictOptions = Array.isArray(districtField?.options) && districtField.options.length > 0;
+    const isDistrictDropdown = districtField?.type === "dropdown" || hasDistrictOptions;
+    if (isDistrictEvent && key === "district" && !isDistrictDropdown) {
+      return; // Locked: do not allow modification for purely static text
     }
     setFormValues((prev) => {
       const next = { ...prev, [key]: value };
       // If participant_type changed and is not Yog Trainer, clear coach_name
       if (key === "participant_type" && value !== "Yog Trainer") {
         delete next.coach_name;
+      }
+      if (key === "district") {
+        const dVal = (value || "").toString().trim().toLowerCase();
+        if (dVal.includes("junagadh city")) {
+          next.reference_name = "Vaishaliben Chudasama";
+        } else if (dVal.includes("bharuch city")) {
+          next.reference_name = "Binitaben Prajapati";
+        } else if (dVal.includes("bharuch gramya")) {
+          next.reference_name = "Kaminaben Raj";
+        } else if (dVal.includes("junagadh gramya")) {
+          if (next.reference_name === "Vaishaliben Chudasama") {
+            delete next.reference_name;
+          }
+        }
       }
       return next;
     });

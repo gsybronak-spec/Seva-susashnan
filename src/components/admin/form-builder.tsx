@@ -213,10 +213,10 @@ export function FormBuilder({ eventId }: { eventId: string }) {
     toast.success("Draft saved");
     setDirty(false);
   }
-  async function publish() {
+  async function publish(promptConfirm = false) {
     const err = validateForm(fields);
     if (err) { toast.error(err); return; }
-    if (!confirm("Publish this form? Live registration form will update immediately.")) return;
+    if (promptConfirm && !confirm("Publish this form? Live registration form will update immediately.")) return;
     const history: FormVersion[] = [
       { at: new Date().toISOString(), label: "Auto-save before publish", fields: form!.fields },
       ...form!.history,
@@ -232,7 +232,7 @@ export function FormBuilder({ eventId }: { eventId: string }) {
       history,
       templates,
     });
-    toast.success("Form published — live now on /register");
+    toast.success("Form saved & live on registration page / ફોર્મ સફળતાપૂર્વક સેવ થયું");
     setDirty(false);
   }
   async function discardDraft() {
@@ -404,8 +404,12 @@ export function FormBuilder({ eventId }: { eventId: string }) {
             <Button variant="outline" onClick={saveDraft} disabled={mutate.isPending}>
               <Save className="mr-2 h-4 w-4" /> Save Draft
             </Button>
-            <Button onClick={publish} disabled={mutate.isPending}>
-              <Rocket className="mr-2 h-4 w-4" /> Publish
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+              onClick={() => publish(false)}
+              disabled={mutate.isPending}
+            >
+              <Rocket className="mr-2 h-4 w-4" /> Save Changes / ફોર્મ સેવ કરો
             </Button>
           </div>
         </div>
@@ -459,8 +463,8 @@ function FieldEditor({
   const hasDefault = DEFAULT_FORM_FIELDS.some((d) => d.key === field.key);
   const showOptions = OPTION_TYPES.includes(field.type);
   const otherFields = allFields.filter((f) => f.key !== field.key);
-  // Essentials cannot change type (DB depends on it) or key. Other built-ins can.
-  const typeLocked = essential;
+  // Only full_name and mobile strictly require locked types. District and others can be dropdown or text.
+  const typeLocked = field.key === "full_name" || field.key === "mobile";
   const keyLocked = essential || isBuiltin;
 
   return (

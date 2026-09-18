@@ -391,10 +391,12 @@ export const adminUpdateEventSection = createServerFn({ method: "POST" })
       } else {
         ensuredFields = incomingFields.map((f) => {
           if (f.key === "district") {
+            const hasOptions = Array.isArray(f.options) && f.options.length > 0;
+            const isDropdown = f.type === "dropdown" || hasOptions;
             return {
               ...f,
-              type: currentCoverage.type === "single" ? "text" : "dropdown",
-              readonly: currentCoverage.type === "single",
+              type: isDropdown ? "dropdown" : (f.type || (currentCoverage.type === "single" ? "text" : "dropdown")),
+              readonly: isDropdown ? false : (typeof f.readonly === "boolean" ? f.readonly : currentCoverage.type === "single"),
               required: true,
               enabled: true,
               hidden: false,

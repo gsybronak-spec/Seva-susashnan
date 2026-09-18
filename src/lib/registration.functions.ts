@@ -315,10 +315,12 @@ export const registerParticipant = createServerFn({ method: "POST" })
       age = computeAge(data.date_of_birth, eventDate);
     }
 
-    // Strict Vadodara Yog Shibir option validation & area mapping
+    // Preserve user-selected district/area if present, otherwise default to districtName
     const cf = { ...(data.custom_fields ?? {}) };
     if (isDistrictEvent && districtName) {
-      cf.district = districtName;
+      if (!cf.district || typeof cf.district !== "string" || !cf.district.trim()) {
+        cf.district = districtName;
+      }
     }
     const isVadodara =
       resolved.event?.slug === "vadodara-yog-shibir" ||
