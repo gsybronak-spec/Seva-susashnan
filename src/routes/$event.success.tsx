@@ -6,6 +6,7 @@ const searchSchema = z.object({
   reg: z.string().optional(),
   key: z.string().optional(),
   access: z.string().optional(),
+  auto: z.string().optional(),
 });
 
 export const Route = createFileRoute("/$event/success")({
@@ -26,6 +27,13 @@ export const Route = createFileRoute("/$event/success")({
 
 function EventSuccessRoute() {
   const { event: eventSlug } = Route.useParams() as { event: string };
-  const { reg, key, access } = Route.useSearch();
-  return <SuccessView reg={reg ?? ""} eventSlug={eventSlug} cardAccess={key || access} />;
+  const { reg, key, access, auto } = Route.useSearch();
+  return (
+    <SuccessView
+      reg={reg ?? ""}
+      eventSlug={eventSlug}
+      cardAccess={key || access}
+      autoDownload={auto === "1"}
+    />
+  );
 }

@@ -456,11 +456,17 @@ export function RegisterView({
         return;
       }
 
-      // Save card access token in sessionStorage for refresh resilience
-      if (typeof window !== "undefined" && res.card_access) {
+      // Save card access token and auto-download pending state in sessionStorage
+      if (typeof window !== "undefined") {
         try {
-          window.sessionStorage.setItem(`gsyb_card_access:${res.registration_number}`, res.card_access);
-          window.sessionStorage.setItem(`vadodara_card_access:${res.registration_number}`, res.card_access);
+          window.sessionStorage.setItem(
+            "gsyb_auto_download:" + res.registration_number,
+            "pending"
+          );
+          if (res.card_access) {
+            window.sessionStorage.setItem(`gsyb_card_access:${res.registration_number}`, res.card_access);
+            window.sessionStorage.setItem(`vadodara_card_access:${res.registration_number}`, res.card_access);
+          }
         } catch {}
       }
 
@@ -472,6 +478,7 @@ export function RegisterView({
         search: {
           reg: res.registration_number,
           key: res.card_access,
+          auto: "1",
         },
       });
     } catch (err) {

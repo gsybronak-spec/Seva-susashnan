@@ -29,8 +29,8 @@ import {
   scannerSignOut,
   adminManualCheckIn,
   adminSearchParticipants,
-  VADODARA_EVENT_ID,
 } from "@/lib/event-engine.functions";
+import { VADODARA_EVENT_ID } from "@/lib/event-config";
 
 type Result = {
   state: "success" | "duplicate" | "invalid" | "unauthorized" | "error";

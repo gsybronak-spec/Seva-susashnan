@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/admin-auth";
+import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
 
 // ============================================================
 // PHYSICAL CHECK-IN (QR + manual) — Yog ane Dhyan Shibir
@@ -77,9 +77,9 @@ export const resolveQrToken = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }): Promise<QrResolution> => {
-    // Server-side authz: only signed-in event staff may resolve QR tokens,
-    // even though the scanning UI itself is behind the admin layout.
-    await requireAdmin();
+    // Server-side authz: only super admin may resolve raw QR tokens here.
+    // Event operators use dedicated operatorCheckIn in event-engine.functions.ts
+    await requireSuperAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const expectedEventId = data.event_id ?? (await loadEventId(data.event_slug));
 
@@ -183,9 +183,9 @@ export const performCheckin = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }): Promise<CheckinResult> => {
-    // Server-side authz: attendance writes are staff-only. The UI check is
-    // never trusted — this is the Module 21 requirement enforcement point.
-    const staff = await requireAdmin();
+    // Server-side authz: only super admin may check-in here.
+    // Event operators use dedicated operatorCheckIn in event-engine.functions.ts
+    const staff = await requireSuperAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const expectedEventId = data.event_id ?? (await loadEventId(data.event_slug));
 
@@ -305,7 +305,7 @@ export const adminAttendanceSummary = createServerFn({ method: "POST" })
     z.object({ event_id: z.string().uuid().optional() }).parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    const session = await requireAdmin();
+    const session = await requireSuperAdmin();
     const { resolveEventFilter } = await import("@/lib/admin-scope.server");
     const filter = await resolveEventFilter(session, data.event_id ?? null);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -344,7 +344,7 @@ export const adminAttendanceList = createServerFn({ method: "POST" })
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    const session = await requireAdmin();
+    const session = await requireSuperAdmin();
     const { resolveEventFilter } = await import("@/lib/admin-scope.server");
     const filter = await resolveEventFilter(session, data.event_id ?? null);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

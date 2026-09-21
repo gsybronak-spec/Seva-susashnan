@@ -12,9 +12,15 @@ interface EventIdCardProps {
   registrationNumber: string;
   cardAccess?: string;
   eventId?: string;
+  autoDownload?: boolean;
 }
 
-export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventIdCardProps) {
+export function EventIdCard({
+  registrationNumber,
+  cardAccess,
+  eventId,
+  autoDownload,
+}: EventIdCardProps) {
   const load = useServerFn(getEventIdCard);
   const track = useServerFn(recordIdCardDownload);
   const [data, setData] = useState<CardData | null>(null);
@@ -23,6 +29,7 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  const autoDownloadTriggered = useRef(false);
 
   const effectiveAccess =
     cardAccess ||
@@ -44,8 +51,8 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
     load({
       data: {
         registration_number: registrationNumber,
-        access_key: effectiveAccess || undefined,
-        event_id: eventId,
+        access_key: effectiveAccess && effectiveAccess.trim().length > 0 ? effectiveAccess : undefined,
+        event_id: eventId && eventId.trim().length > 0 ? eventId : undefined,
       },
     })
       .then(async (result) => {
@@ -53,9 +60,13 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
         setData(result);
         if (result.ok && result.qr_token) {
           const qrDataUrl = await QRCode.toDataURL(result.qr_token, {
-            width: 360,
-            margin: 4,
+            width: 900,
+            margin: 2,
             errorCorrectionLevel: "M",
+            color: {
+              dark: "#000000",
+              light: "#FFFFFF",
+            },
           });
           setQr(qrDataUrl);
         }
@@ -71,6 +82,43 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
       active = false;
     };
   }, [effectiveAccess, eventId, load, registrationNumber]);
+
+  // One-time automatic download effect
+  useEffect(() => {
+    if (!data?.ok || !qr || autoDownloadTriggered.current) return;
+
+    const guardKey = `gsyb_auto_download:${registrationNumber}`;
+    const isPending =
+      autoDownload === true &&
+      typeof window !== "undefined" &&
+      window.sessionStorage.getItem(guardKey) === "pending";
+
+    if (isPending) {
+      autoDownloadTriggered.current = true;
+      // Immediately transition guard state to prevent duplicate triggers
+      try {
+        window.sessionStorage.setItem(guardKey, "completed");
+      } catch {}
+
+      // Strip ?auto=1 from URL search params without reloading
+      if (typeof window !== "undefined" && window.history?.replaceState) {
+        try {
+          const url = new URL(window.location.href);
+          if (url.searchParams.has("auto")) {
+            url.searchParams.delete("auto");
+            window.history.replaceState({}, "", url.toString());
+          }
+        } catch {}
+      }
+
+      // Allow 300ms for browser rendering, then attempt auto download
+      const timer = setTimeout(() => {
+        downloadCard(true);
+      }, 300);
+
+      return () => clearTimeout(timer);
+    }
+  }, [data, qr, autoDownload, registrationNumber]);
 
   async function renderCardToCanvas(
     card: NonNullable<CardData> & { ok: true },
@@ -241,20 +289,32 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
       }
     }
 
-    // 6. Right Column: Event Check-in QR Code Panel
+    // 6. Right Column: Event Check-in QR Code Panel (High-Resolution & Larger QR Area)
     ctx.fillStyle = "#FDFBF7";
-    ctx.fillRect(810, 216, 330, 360);
+    ctx.fillRect(760, 210, 380, 382);
     ctx.strokeStyle = "#E8E0D5";
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(810, 216, 330, 360);
+    ctx.strokeRect(760, 210, 380, 382);
 
     const effectiveQr =
       qrSrc ||
       (card.qr_token
-        ? await QRCode.toDataURL(card.qr_token, { width: 360, margin: 4, errorCorrectionLevel: "M" })
+        ? await QRCode.toDataURL(card.qr_token, {
+            width: 900,
+            margin: 2,
+            errorCorrectionLevel: "M",
+            color: { dark: "#000000", light: "#FFFFFF" },
+          })
         : "");
 
     if (effectiveQr) {
+      // White quiet-zone backing box (330x330px centered horizontally in panel)
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(785, 222, 330, 330);
+      ctx.strokeStyle = "#E8E0D5";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(785, 222, 330, 330);
+
       const img = new Image();
       img.crossOrigin = "anonymous";
       await new Promise<void>((resolve) => {
@@ -262,7 +322,8 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
         const done = () => {
           if (loaded) return;
           loaded = true;
-          ctx.drawImage(img, 825, 235, 300, 300);
+          // Render QR at 310x310px centered perfectly inside 330x330px quiet zone
+          ctx.drawImage(img, 795, 232, 310, 310);
           resolve();
         };
         img.onload = done;
@@ -275,12 +336,12 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
       });
 
       ctx.fillStyle = "#0F3E3E";
-      ctx.font = "bold 15px 'Noto Sans Gujarati', 'Noto Sans', sans-serif";
+      ctx.font = "bold 14px 'Noto Sans Gujarati', 'Noto Sans', sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("પ્રવેશ માટે આ QR કોડ સ્કેન કરાવો", 975, 545);
+      ctx.fillText("પ્રવેશ માટે આ QR કોડ સ્કેન કરાવો", 950, 568);
       ctx.fillStyle = "#64748B";
-      ctx.font = "12px 'Noto Sans', sans-serif";
-      ctx.fillText("Official Digital Check-in Pass", 975, 563);
+      ctx.font = "11px 'Noto Sans', sans-serif";
+      ctx.fillText("Official Digital Check-in Pass", 950, 584);
       ctx.textAlign = "start";
     }
 
@@ -322,7 +383,7 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
     return canvas;
   }
 
-  async function downloadCard() {
+  async function downloadCard(isAuto = false) {
     if (!data?.ok) return;
     setDownloading(true);
     const filename = `${data.participant_id}-id-card.png`;
@@ -351,10 +412,16 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
         },
       }).catch(() => {});
 
-      toast.success("Digital ID card downloaded successfully.");
+      if (isAuto) {
+        toast.success("તમારું ડિજિટલ ID કાર્ડ ડાઉનલોડ થઈ ગયું છે!", { duration: 4500 });
+      } else {
+        toast.success("Digital ID card downloaded successfully.");
+      }
     } catch (err) {
       console.error("Download failed:", err);
-      toast.error("Failed to generate download. Please try again or use Print.");
+      if (!isAuto) {
+        toast.error("Failed to generate download. Please try again or use Print.");
+      }
     } finally {
       setDownloading(false);
     }
@@ -400,6 +467,49 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
 
   return (
     <div className="space-y-6">
+      {/* Prominent ID Card Ready Banner & Primary Download Button */}
+      <div className="rounded-2xl border-2 border-[#0F3E3E] bg-linear-to-b from-[#FAF8F5] via-white to-[#FAF8F5] p-5 sm:p-7 shadow-lg shadow-[#0F3E3E]/5 text-center space-y-4">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs">
+          <Sparkles className="w-4 h-4 text-emerald-600" />
+          <span>તમારું Digital ID Card તૈયાર છે</span>
+        </div>
+
+        <div>
+          <h2 className="text-xl sm:text-2xl font-extrabold text-[#0F3E3E] tracking-tight">
+            Digital ID Card ડાઉનલોડ કરો
+          </h2>
+          <p className="mt-1 text-xs sm:text-sm text-[#5C7065] max-w-md mx-auto">
+            શિબિરમાં પ્રવેશ માટે આ ID કાર્ડ જરૂરી છે. નીચેના બટન પર ક્લિક કરીને કાર્ડ તમારા ફોનમાં સાચવી રાખો.
+          </p>
+        </div>
+
+        <div className="pt-1 flex justify-center">
+          <Button
+            onClick={() => downloadCard()}
+            disabled={downloading}
+            className="w-full sm:w-auto min-w-[300px] h-14 px-8 rounded-xl bg-[#0F3E3E] hover:bg-[#144D4D] text-white font-extrabold text-base shadow-lg shadow-[#0F3E3E]/25 gap-3 cursor-pointer transition-all hover:scale-[1.01] active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-[#0F3E3E] focus-visible:ring-offset-2"
+          >
+            {downloading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Download className="w-5 h-5" />
+            )}
+            <span>{downloading ? "કાર્ડ ડાઉનલોડ થઈ રહ્યું છે..." : "ડિજિટલ ID Card ડાઉનલોડ કરો"}</span>
+          </Button>
+        </div>
+
+        {/* Mandatory Gujarati Instruction Notice Box */}
+        <div className="mt-4 p-4 sm:p-5 rounded-xl bg-amber-50/90 border border-amber-300/80 text-left shadow-xs space-y-1.5">
+          <div className="flex items-center gap-1.5 text-amber-900 font-bold text-sm">
+            <span>⚠️</span>
+            <span>ખાસ સૂચના</span>
+          </div>
+          <p className="text-xs sm:text-sm text-amber-950 leading-relaxed font-medium">
+            ડિજિટલ ID Card ડાઉનલોડ કરીને સાચવી રાખવું. શિબિરમાં તમારી હાજરી નોંધાવવા માટે આ ID Card જરૂરી છે. તમારી હાજરી નોંધાયા બાદ જ તમે તમારું પ્રમાણપત્ર (Certificate) ડાઉનલોડ કરી શકશો.
+          </p>
+        </div>
+      </div>
+
       {/* Visual ID Card Preview Container */}
       <div
         ref={cardRef}
@@ -446,9 +556,9 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
           </div>
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
             {/* Participant Details */}
-            <div className="md:col-span-2 space-y-4">
+            <div className="md:col-span-7 space-y-4">
               <div>
                 <p className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
                   Participant Name / સહભાગીનું નામ
@@ -548,22 +658,27 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
             </div>
 
             {/* QR Code Panel */}
-            <div className="flex flex-col items-center justify-center p-4 rounded-xl bg-[#FAF8F5] border border-[#E8E0D5] shadow-xs">
-              {qr ? (
-                <img
-                  src={qr}
-                  alt="Check-in QR Code"
-                  className="w-40 h-40 rounded-lg bg-white p-2 shadow-xs border border-[#E8E0D5]"
-                />
-              ) : (
-                <div className="w-40 h-40 flex items-center justify-center bg-stone-100 rounded-lg">
-                  <Loader2 className="w-6 h-6 animate-spin text-stone-400" />
+            <div className="md:col-span-5 flex flex-col items-center justify-center">
+              <div className="w-full max-w-[280px] sm:max-w-[300px] md:max-w-[260px] lg:max-w-[280px] p-3.5 sm:p-4 rounded-2xl bg-[#FAF8F5] border-2 border-[#0F3E3E]/20 shadow-xs flex flex-col items-center justify-center">
+                <div className="p-2 sm:p-2.5 bg-white rounded-xl border border-[#E8E0D5] shadow-xs flex items-center justify-center w-full aspect-square">
+                  {qr ? (
+                    <img
+                      src={qr}
+                      alt="Official Check-in QR Code"
+                      className="w-56 h-56 sm:w-64 sm:h-64 md:w-56 md:h-56 lg:w-64 lg:h-64 object-contain rounded-lg"
+                      style={{ imageRendering: "pixelated" }}
+                    />
+                  ) : (
+                    <div className="w-56 h-56 sm:w-64 sm:h-64 md:w-56 md:h-56 lg:w-64 lg:h-64 flex items-center justify-center bg-stone-50 rounded-lg">
+                      <Loader2 className="w-8 h-8 animate-spin text-stone-400" />
+                    </div>
+                  )}
                 </div>
-              )}
-              <p className="text-xs font-semibold text-[#0F3E3E] mt-2.5 text-center">
-                પ્રવેશ માટે આ QR કોડ સ્કેન કરાવો
-              </p>
-              <p className="text-[10px] text-[#64748B] text-center">Event Check-in QR</p>
+                <p className="text-xs sm:text-sm font-bold text-[#0F3E3E] mt-3 text-center">
+                  પ્રવેશ માટે આ QR કોડ સ્કેન કરાવો
+                </p>
+                <p className="text-[11px] text-[#64748B] font-medium text-center">Official Check-in QR</p>
+              </div>
             </div>
           </div>
 
@@ -585,16 +700,17 @@ export function EventIdCard({ registrationNumber, cardAccess, eventId }: EventId
       {/* Action Buttons - Mobile First */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3 print:hidden">
         <Button
-          onClick={downloadCard}
+          onClick={() => downloadCard()}
           disabled={downloading}
-          className="h-13 px-6 rounded-xl bg-[#0F3E3E] hover:bg-[#144D4D] text-[#FAF8F5] font-bold shadow-md shadow-[#0F3E3E]/20 text-sm gap-2 cursor-pointer transition-all"
+          variant="outline"
+          className="h-12 px-6 rounded-xl border-[#0F3E3E]/30 bg-white hover:bg-stone-50 text-[#0F3E3E] font-bold text-xs sm:text-sm gap-2 shadow-xs cursor-pointer"
         >
           {downloading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
             <Download className="w-4 h-4" />
           )}
-          <span>{downloading ? "Generating PNG..." : "Download ID Card (PNG)"}</span>
+          <span>{downloading ? "કાર્ડ ડાઉનલોડ થઈ રહ્યું છે..." : "Download ID Card (PNG)"}</span>
         </Button>
 
         <div className="grid grid-cols-2 sm:flex items-center gap-3">

@@ -49,6 +49,7 @@ const EventOverview = lazy(() => import("@/components/admin/event-overview").the
 const AdminCharts = lazy(() => import("@/components/admin/admin-charts").then(m => ({ default: m.AdminCharts })));
 const DistrictBreakdown = lazy(() => import("@/components/admin/district-breakdown").then(m => ({ default: m.DistrictBreakdown })));
 const DistrictManager = lazy(() => import("@/components/admin/district-manager").then(m => ({ default: m.DistrictManager })));
+const ViewerSummaryDashboard = lazy(() => import("@/components/admin/viewer-summary-dashboard").then(m => ({ default: m.ViewerSummaryDashboard })));
 
 
 import {
@@ -99,7 +100,20 @@ function AdminPage() {
   }
   if (!data?.authed) return <LoginCard onLoggedIn={() => refetch()} />;
 
-  // Render dedicated child routes (such as /admin/checkin) directly
+  // Viewer Admin: strictly isolated to the read-only summary dashboard with zero participant data
+  if (data.role === "view_admin") {
+    return (
+      <Suspense fallback={<TabFallback />}>
+        <ViewerSummaryDashboard
+          check={data as CheckData}
+          onLogout={() => refetch()}
+          onRefetchCheck={() => refetch()}
+        />
+      </Suspense>
+    );
+  }
+
+  // Render dedicated child routes (such as /admin/checkin) directly for Super Admins
   if (pathname !== "/admin" && pathname !== "/admin/") {
     return <Outlet />;
   }
@@ -792,15 +806,7 @@ function Dashboard({
           <p className="kicker">Board Operations</p>
           <h1 className="display-2">Admin Dashboard</h1>
           <p className="text-sm text-muted-foreground">
-            Signed in as <span className="font-medium">{check.username}</span>{" "}
-            <span
-              className={`ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-                isSuper ? "bg-brand-accent/15 text-brand-accent" : "bg-brand-primary/10 text-brand-primary"
-              }`}
-            >
-              <Shield className="h-3 w-3" />
-              {isSuper ? "Super Admin" : "View Admin"}
-            </span>
+            Signed in as <span className="font-semibold text-foreground">{check.username}</span>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

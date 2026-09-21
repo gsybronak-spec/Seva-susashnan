@@ -15,10 +15,12 @@ export function SuccessView({
   reg,
   eventSlug,
   cardAccess,
+  autoDownload,
 }: {
   reg: string;
   eventSlug?: string;
   cardAccess?: string;
+  autoDownload?: boolean;
 }) {
   const { config } = useEventConfig(eventSlug ?? null);
   const [copied, setCopied] = useState<"reg" | "link" | "msg" | null>(null);
@@ -63,7 +65,7 @@ export function SuccessView({
       </div>
 
       <div className="mx-auto max-w-2xl space-y-6 relative z-10">
-        {/* Registration Confirmation Glass Card */}
+        {/* STEP 1: Registration Confirmation Glass Card */}
         <div className="overflow-hidden rounded-2xl border border-[#E8E0D5] bg-white/95 backdrop-blur-md shadow-lg shadow-[#0F3E3E]/5">
           {/* Top Tricolor Bar */}
           <div className="h-1.5 w-full flex">
@@ -83,9 +85,12 @@ export function SuccessView({
                 <span>સત્તાવાર નોંધણી પુષ્ટિ / Confirmed</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0F3E3E] tracking-tight">
-                Registration Successful!
+                નોંધણી સફળ થઈ ગઈ છે!
               </h1>
-              <p className="mt-1 text-xs sm:text-sm text-[#5C7065] max-w-md mx-auto">
+              <p className="text-base sm:text-lg font-bold text-[#D97706] mt-0.5">
+                Registration Successful!
+              </p>
+              <p className="mt-1.5 text-xs sm:text-sm text-[#5C7065] max-w-md mx-auto">
                 તમારી નોંધણી સફળતાપૂર્વક પૂર્ણ થઈ ગઈ છે. તમારો સત્તાવાર પ્રવેશ પાસ અને QR કોડ નીચે ઉપલબ્ધ છે.
               </p>
             </div>
@@ -111,7 +116,17 @@ export function SuccessView({
           </div>
         </div>
 
-        {/* Clear Next Step Instructions for the Participant */}
+        {/* STEP 2: Official Digital ID Card with signed QR Code & Prominent Download Action */}
+        <div className="space-y-3">
+          <EventIdCard
+            registrationNumber={reg}
+            cardAccess={cardAccess}
+            eventId={config.id}
+            autoDownload={autoDownload}
+          />
+        </div>
+
+        {/* STEP 3: Clear Next Step Instructions for the Participant */}
         <div className="p-5 sm:p-6 rounded-2xl bg-white/90 backdrop-blur-md border border-[#E8E0D5] shadow-sm space-y-3">
           <h3 className="text-sm font-bold text-[#0F3E3E] flex items-center gap-2">
             <span>📋</span>
@@ -120,7 +135,7 @@ export function SuccessView({
           <ul className="text-xs text-[#2D4A3E] space-y-2 leading-relaxed">
             <li className="flex items-start gap-2">
               <span className="font-bold text-[#D97706]">•</span>
-              <span><strong>ID કાર્ડ સાચવો:</strong> નીચે આપેલ બટન પર ક્લિક કરીને તમારો ડિજિટલ ID કાર્ડ (PNG) ડાઉનલોડ કરી લો.</span>
+              <span><strong>ID કાર્ડ સાચવો:</strong> ઉપર આપેલ બટન પર ક્લિક કરીને તમારો ડિજિટલ ID કાર્ડ (PNG) ડાઉનલોડ કરી લો.</span>
             </li>
             <li className="flex items-start gap-2">
               <span className="font-bold text-[#D97706]">•</span>
@@ -131,19 +146,6 @@ export function SuccessView({
               <span><strong>ગેટ એન્ટ્રી:</strong> પ્રવેશ દ્વાર પર તમારો QR કોડ સ્કેન કરાવીને હાજરી નોંધાવો.</span>
             </li>
           </ul>
-        </div>
-
-        {/* Official Digital ID Card with signed QR Code */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 px-1">
-            <Sparkles className="w-4 h-4 text-[#D97706]" />
-            <h2 className="text-base font-bold text-[#0F3E3E]">Official Event Pass & QR</h2>
-          </div>
-          <EventIdCard
-            registrationNumber={reg}
-            cardAccess={cardAccess}
-            eventId={config.id}
-          />
         </div>
 
         <WhatsAppCard whatsapp={config.whatsapp} />

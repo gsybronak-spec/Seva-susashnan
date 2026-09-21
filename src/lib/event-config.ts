@@ -1,5 +1,7 @@
 // Client-safe types + defaults for the events table.
 
+export const VADODARA_EVENT_ID = "2caae4eb-03b7-47be-98fa-a4a145867bd2";
+
 export type EventGeneral = {
   title: string;
   subtitle: string;

@@ -41,6 +41,9 @@ type ScanResult = {
   state: "success" | "duplicate" | "invalid" | "unauthorized" | "error";
   participant_name?: string;
   participant_id?: string;
+  event_id?: string;
+  event_title?: string;
+  district?: string;
   check_in_time?: string;
   error?: string;
   code?: string;
@@ -170,9 +173,8 @@ export function EventOperatorScannerView({
 
   // Check operator session
   const verifyAuth = useCallback(async () => {
-    if (!targetEventId) return;
     try {
-      const res = await checkSession({ data: { target_event_id: targetEventId } });
+      const res = await checkSession({ data: { target_event_id: targetEventId || undefined } });
       if (res.authed) {
         setSession(res);
       } else {
@@ -186,52 +188,42 @@ export function EventOperatorScannerView({
   }, [checkSession, targetEventId]);
 
   useEffect(() => {
-    if (targetEventId) {
-      verifyAuth();
-    }
-  }, [targetEventId, verifyAuth]);
+    verifyAuth();
+  }, [verifyAuth]);
 
   // Clean up camera on unmount
   useEffect(() => {
     return () => {
       controlsRef.current?.stop();
-      if (autoResumeTimerRef.current) clearInterval(autoResumeTimerRef.current);
+      if (autoResumeTimerRef.current) clearTimeout(autoResumeTimerRef.current);
     };
   }, []);
 
   // Advance / reset scanner to ready state
   const scanNext = useCallback(() => {
-    if (autoResumeTimerRef.current) clearInterval(autoResumeTimerRef.current);
+    if (autoResumeTimerRef.current) clearTimeout(autoResumeTimerRef.current);
     setAutoResumeSeconds(null);
     setResult(null);
     isProcessingRef.current = false;
   }, []);
 
-  // Hands-free auto-resume timer (1.5s on success, 2.0s on duplicate/error)
+  // Hands-free fast auto-resume (~1.0s on success, ~1.4s on duplicate/error)
   useEffect(() => {
     if (!result) {
       setAutoResumeSeconds(null);
-      if (autoResumeTimerRef.current) clearInterval(autoResumeTimerRef.current);
+      if (autoResumeTimerRef.current) clearTimeout(autoResumeTimerRef.current);
       return;
     }
 
-    const duration = result.state === "success" ? 1.5 : 2.0;
+    const duration = result.state === "success" ? 1.0 : 1.4;
     setAutoResumeSeconds(duration);
-    const startTime = Date.now();
 
-    const interval = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      const remaining = Math.max(0, Number((duration - elapsed).toFixed(1)));
-      if (remaining <= 0) {
-        clearInterval(interval);
-        scanNext();
-      } else {
-        setAutoResumeSeconds(remaining);
-      }
-    }, 200);
+    const timer = setTimeout(() => {
+      scanNext();
+    }, duration * 1000);
 
-    autoResumeTimerRef.current = interval;
-    return () => clearInterval(interval);
+    autoResumeTimerRef.current = timer;
+    return () => clearTimeout(timer);
   }, [result, scanNext]);
 
   // Process decoded QR token
@@ -240,11 +232,11 @@ export function EventOperatorScannerView({
       if (isProcessingRef.current) return;
       const now = Date.now();
 
-      // Guard: prevent immediate repeat scan within 3 seconds
+      // Guard: prevent immediate repeat scan within 1.5 seconds for the exact same token
       if (
         lastScannedTokenRef.current &&
         lastScannedTokenRef.current.token === token &&
-        now - lastScannedTokenRef.current.time < 3000
+        now - lastScannedTokenRef.current.time < 1500
       ) {
         return;
       }
@@ -326,7 +318,7 @@ export function EventOperatorScannerView({
     try {
       const { BrowserQRCodeReader } = await import("@zxing/browser");
       const reader = new BrowserQRCodeReader(undefined, {
-        delayBetweenScanAttempts: 150,
+        delayBetweenScanAttempts: 40,
       });
 
       controlsRef.current = await reader.decodeFromConstraints(
@@ -418,7 +410,6 @@ export function EventOperatorScannerView({
   // Handle operator sign-in
   async function handleOperatorLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!targetEventId) return;
     setLoginError("");
     setIsLoggingIn(true);
 
@@ -427,7 +418,7 @@ export function EventOperatorScannerView({
         data: {
           username: username.trim(),
           password,
-          target_event_id: targetEventId,
+          target_event_id: targetEventId || undefined,
         },
       });
 
@@ -547,16 +538,27 @@ export function EventOperatorScannerView({
             <img
               src="/logo-gsyb.png"
               alt="GSYB Emblem"
-              className="w-16 h-16 mx-auto mb-3 object-contain drop-shadow-xs"
+              className="w-16 h-16 mx-auto mb-2 object-contain drop-shadow-xs"
             />
-            <span className="inline-block px-3 py-1 rounded-full bg-emerald-100 text-[#0F3E3E] text-[11px] font-bold tracking-wide uppercase mb-2">
-              {districtName || "ઓફિશિયલ શિબિર"} &bull; સ્કેનર કન્સોલ
-            </span>
-            <h1 className="text-lg font-extrabold text-[#0F3E3E] leading-snug px-2">
-              {eventTitle}
-            </h1>
-            <p className="text-xs text-[#5C7065] mt-1.5">
-              સ્થળ હાજરી સ્કેનર ઓપરેટર લોગિન
+            <p className="text-xs font-bold text-[#0F3E3E] uppercase tracking-wider mb-2">
+              GUJARAT STATE YOG BOARD
+            </p>
+            <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200/60 mb-3">
+              <span className="text-[10px] font-bold text-[#5C7065] uppercase tracking-wider block">
+                Digital ID Card Scanner
+              </span>
+              <h1 className="text-sm sm:text-base font-extrabold text-[#0F3E3E] leading-snug mt-0.5">
+                {eventSlug && districtName ? `${districtName} યોગ શિબિર` : "સર્વ શિબિર સ્કેનર કન્સોલ"}
+              </h1>
+              <span className="text-[10px] text-emerald-700 font-medium block mt-0.5">
+                Universal Multi-Event Gate Entry
+              </span>
+            </div>
+            <h2 className="text-sm font-extrabold text-[#1C2623] tracking-tight">
+              Scanner Login
+            </h2>
+            <p className="text-[11px] text-[#5C7065] mt-0.5">
+              ઓપરેટર યુઝરનેમ અને સ્કેનર પાસવર્ડ દાખલ કરો
             </p>
           </div>
 
@@ -565,18 +567,18 @@ export function EventOperatorScannerView({
             {loginError && (
               <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-rose-800 text-xs">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                <span className="leading-relaxed">{loginError}</span>
+                <span className="leading-relaxed font-medium">{loginError}</span>
               </div>
             )}
 
             <form onSubmit={handleOperatorLogin} className="space-y-4">
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-[#0F3E3E]">
-                  ઓપરેટર યુઝરનેમ / સ્કેનર કોડ / મોબાઈલ
+                  Username
                 </Label>
                 <Input
                   type="text"
-                  placeholder="e.g. SCN-XXXXXX અથવા મોબાઈલ નંબર"
+                  placeholder="e.g. patan_gate1 or SCN-5FAC1DDD"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="h-11 text-xs border-[#D9D0C5] focus:border-[#0F3E3E] rounded-xl"
@@ -589,7 +591,7 @@ export function EventOperatorScannerView({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-bold text-[#0F3E3E]">
-                    ઓપરેટર પાસવર્ડ
+                    Scanner Key / Password
                   </Label>
                   <button
                     type="button"
@@ -597,12 +599,12 @@ export function EventOperatorScannerView({
                     className="text-[11px] text-[#5C7065] hover:text-[#0F3E3E] flex items-center gap-1"
                   >
                     {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    <span>{showPassword ? "છુપાવો" : "જુઓ"}</span>
+                    <span>{showPassword ? "Hide" : "Show"}</span>
                   </button>
                 </div>
                 <Input
                   type={showPassword ? "text" : "password"}
-                  placeholder="તમારો ગુપ્ત પાસવર્ડ દાખલ કરો"
+                  placeholder="Enter scanner key / password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="h-11 text-xs border-[#D9D0C5] focus:border-[#0F3E3E] rounded-xl"
@@ -613,17 +615,17 @@ export function EventOperatorScannerView({
               <Button
                 type="submit"
                 disabled={isLoggingIn || !username.trim() || !password}
-                className="w-full h-11 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-bold text-xs rounded-xl shadow-xs gap-2 transition-all active:scale-[0.99]"
+                className="w-full h-11 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-bold text-xs rounded-xl shadow-xs gap-2 transition-all active:scale-[0.99] tracking-wider uppercase"
               >
                 {isLoggingIn ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>ચકાસણી ચાલુ છે...</span>
+                    <span>Verifying credentials...</span>
                   </>
                 ) : (
                   <>
                     <LogIn className="w-4 h-4" />
-                    <span>સ્કેનર શરૂ કરો (Sign In)</span>
+                    <span>LOGIN</span>
                   </>
                 )}
               </Button>
@@ -631,7 +633,7 @@ export function EventOperatorScannerView({
 
             <div className="mt-5 pt-4 border-t border-[#F0EAE1] text-center">
               <p className="text-[11px] text-[#78887F] leading-relaxed">
-                નોંધ: આ સ્કેનર ફક્ત અધિકૃત સ્વયંસેવકો અને સ્કેનિંગ ઓપરેટરો માટે છે.
+                નોંધ: આ સ્કેનર ક્રેડેન્શિયલ્સ તમામ શિબિરો માટે માન્ય છે. QR કોડના આધારે હાજરી આપોઆપ યોગ્ય શિબિરમાં નોંધાશે.
               </p>
             </div>
           </div>
@@ -651,26 +653,31 @@ export function EventOperatorScannerView({
           <img src="/logo-gsyb.png" alt="Emblem" className="w-7 h-7 object-contain shrink-0" />
           <div className="truncate">
             <h1 className="text-xs font-bold text-white truncate leading-tight">
-              {eventTitle}
+              Digital ID Card Scanner
             </h1>
             <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
               <span className="text-emerald-400 font-medium">● સક્રિય</span>
               <span>&bull;</span>
               <span className="text-slate-300 font-semibold truncate">
-                {session.scanner_name} ({session.operator_name})
+                {session.operator_name || session.scanner_name}
               </span>
+              {districtName && (
+                <>
+                  <span>&bull;</span>
+                  <span className="text-emerald-300 font-medium truncate">
+                    {districtName}
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Live Attendance Counter Pill */}
+          {/* Live Scans Counter Pill */}
           <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 px-2.5 py-1 rounded-full text-[11px] font-mono">
-            <span className="text-emerald-400 font-bold">{session.present_count ?? 0}</span>
-            <span className="text-slate-500 text-[10px]">હાજર</span>
-            <span className="text-slate-600">|</span>
-            <span className="text-amber-400 font-bold">{session.scan_count ?? 0}</span>
-            <span className="text-slate-500 text-[10px]">સ્કેન</span>
+            <span className="text-emerald-400 font-bold">{session.scan_count ?? 0}</span>
+            <span className="text-slate-400 text-[10px]">કુલ સ્કેન</span>
           </div>
 
           <button
@@ -704,16 +711,16 @@ export function EventOperatorScannerView({
 
         {/* Semi-transparent dark overlay framing the scanner box */}
         <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-          {/* Target Viewfinder Box (390px mobile friendly: 260px x 260px) */}
-          <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-2xl border-2 border-emerald-400/80 shadow-[0_0_30px_rgba(16,185,129,0.3)] flex items-center justify-center overflow-hidden">
+          {/* Target Viewfinder Box (Substantially larger: 86vw up to 340px) */}
+          <div className="relative w-[86vw] max-w-[340px] aspect-square rounded-3xl border-2 border-emerald-400/90 shadow-[0_0_35px_rgba(16,185,129,0.35)] flex items-center justify-center overflow-hidden">
             {/* Animated Laser Scan Line */}
-            <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-[scanLaser_2.2s_ease-in-out_infinite]" />
+            <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-[scanLaser_2.0s_ease-in-out_infinite]" />
 
-            {/* Corner Bracket Accents */}
-            <div className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-emerald-400 rounded-tl-md" />
-            <div className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-emerald-400 rounded-tr-md" />
-            <div className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-emerald-400 rounded-bl-md" />
-            <div className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-emerald-400 rounded-br-md" />
+            {/* Corner Bracket Accents (Prominent & Clear) */}
+            <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-emerald-400 rounded-tl-xl" />
+            <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-emerald-400 rounded-tr-xl" />
+            <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-emerald-400 rounded-bl-xl" />
+            <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-emerald-400 rounded-br-xl" />
 
             {busy && (
               <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex flex-col items-center justify-center text-white">
@@ -723,8 +730,8 @@ export function EventOperatorScannerView({
             )}
           </div>
 
-          <p className="text-slate-300 text-xs font-medium mt-4 tracking-wide text-center px-4 drop-shadow-md">
-            આઈડી કાર્ડનો QR કોડ ચોરસ ફ્રેમમાં રાખો
+          <p className="text-slate-200 text-xs font-semibold mt-4 tracking-wide text-center px-4 drop-shadow-md">
+            આઈડી કાર્ડનો QR કોડ કેમેરા સામે રાખો
           </p>
         </div>
 
@@ -784,22 +791,29 @@ export function EventOperatorScannerView({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                        ✅ હાજરી સફળ થઈ
+                        ✅ હાજરી સફળ થઈ (PRESENT)
                       </span>
-                      {autoResumeSeconds !== null && (
-                        <span className="text-[10px] font-mono text-emerald-300/80">
-                          આગામી સ્કેન {autoResumeSeconds} સે...
-                        </span>
-                      )}
                     </div>
                     <h3 className="text-base font-extrabold text-white truncate mt-0.5">
                       {result.participant_name}
                     </h3>
-                    <p className="text-xs font-mono text-emerald-200 font-semibold mt-0.5">
-                      {result.participant_id}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-xs font-mono text-emerald-200 font-bold bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-500/40">
+                        {result.participant_id}
+                      </span>
+                      {result.district && (
+                        <span className="px-2 py-0.5 rounded bg-emerald-500 text-black text-[10px] font-extrabold uppercase tracking-wider">
+                          📍 {result.district}
+                        </span>
+                      )}
+                      {result.event_title && (
+                        <span className="text-xs text-emerald-200 font-semibold truncate max-w-[200px]">
+                          {result.event_title}
+                        </span>
+                      )}
+                    </div>
                     {result.check_in_time && (
-                      <p className="text-[10px] text-emerald-300/70 mt-1 flex items-center gap-1">
+                      <p className="text-[10px] text-emerald-300/80 mt-1.5 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         <span>સમય: {new Date(result.check_in_time).toLocaleTimeString("en-IN")}</span>
                       </p>
@@ -821,20 +835,27 @@ export function EventOperatorScannerView({
                       <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
                         ⚠️ પહેલાંથી હાજર થયેલ છે
                       </span>
-                      {autoResumeSeconds !== null && (
-                        <span className="text-[10px] font-mono text-amber-300/80">
-                          આગામી સ્કેન {autoResumeSeconds} સે...
-                        </span>
-                      )}
                     </div>
                     <h3 className="text-base font-extrabold text-white truncate mt-0.5">
                       {result.participant_name}
                     </h3>
-                    <p className="text-xs font-mono text-amber-200 font-semibold mt-0.5">
-                      {result.participant_id}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-xs font-mono text-amber-200 font-bold bg-amber-900/60 px-2 py-0.5 rounded border border-amber-500/40">
+                        {result.participant_id}
+                      </span>
+                      {result.district && (
+                        <span className="px-2 py-0.5 rounded bg-amber-500 text-black text-[10px] font-extrabold uppercase tracking-wider">
+                          📍 {result.district}
+                        </span>
+                      )}
+                      {result.event_title && (
+                        <span className="text-xs text-amber-200 font-semibold truncate max-w-[200px]">
+                          {result.event_title}
+                        </span>
+                      )}
+                    </div>
                     {result.check_in_time && (
-                      <p className="text-[10px] text-amber-200 mt-1 flex items-center gap-1">
+                      <p className="text-[10px] text-amber-200 mt-1.5 flex items-center gap-1">
                         <Clock className="w-3 h-3 text-amber-400" />
                         <span>
                           પ્રથમ હાજરી:{" "}

@@ -6,12 +6,19 @@ const searchSchema = z.object({
   reg: z.string().optional(),
   key: z.string().optional(),
   access: z.string().optional(),
+  auto: z.string().optional(),
 });
 
 export const Route = createFileRoute("/success")({
   validateSearch: (s) => searchSchema.parse(s),
   component: () => {
-    const { reg, key, access } = Route.useSearch();
-    return <SuccessView reg={reg ?? ""} cardAccess={key || access} />;
+    const { reg, key, access, auto } = Route.useSearch();
+    return (
+      <SuccessView
+        reg={reg ?? ""}
+        cardAccess={key || access}
+        autoDownload={auto === "1"}
+      />
+    );
   },
 });

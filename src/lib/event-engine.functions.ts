@@ -1,12 +1,11 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequest, useSession } from "@tanstack/react-start/server";
+import { useSession } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
 
-export const VADODARA_EVENT_ID = "2caae4eb-03b7-47be-98fa-a4a145867bd2";
-export const VADODARA_EVENT_SLUG = "vadodara-yog-shibir";
+import { VADODARA_EVENT_ID } from "@/lib/event-config";
 
-export const scannerSessionConfig = () => {
+const scannerSessionConfig = () => {
   const password = process.env.SESSION_SECRET;
   if (!password || password.length < 32) {
     throw new Error("SESSION_SECRET is not configured or too short (min 32 chars)");
@@ -19,19 +18,19 @@ export const scannerSessionConfig = () => {
   };
 };
 
-export type ScannerSession = {
+type ScannerSession = {
   scannerId?: string;
   eventId?: string;
   scannerName?: string;
   operatorName?: string;
 };
 
-export async function sha256(value: string): Promise<string> {
+async function sha256(value: string): Promise<string> {
   const { createHash } = await import("node:crypto");
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-export async function signToken(tokenId: string, eventId: string): Promise<string> {
+async function signToken(tokenId: string, eventId: string): Promise<string> {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("QR signing is unavailable: SESSION_SECRET missing");
   const { createHmac } = await import("node:crypto");
@@ -40,7 +39,7 @@ export async function signToken(tokenId: string, eventId: string): Promise<strin
   return `${payload}.${signature}`;
 }
 
-export async function parseToken(
+async function parseToken(
   value: string,
   expectedEventId?: string,
 ): Promise<{ eventId: string; tokenId: string } | null> {
@@ -59,7 +58,7 @@ export async function parseToken(
   return { eventId, tokenId };
 }
 
-export type ResolvedParticipant = {
+type ResolvedParticipant = {
   id: string;
   full_name: string;
   registration_number: string;
@@ -70,7 +69,7 @@ export type ResolvedParticipant = {
   taluka?: string | null;
 };
 
-export type ResolveTokenResult =
+type ResolveTokenResult =
   | { ok: true; registration: ResolvedParticipant }
   | {
       ok: false;
@@ -90,9 +89,9 @@ export type ResolveTokenResult =
  *    - Format 4: Tokenized ID card URL (?t=...&reg=...)
  * 3. Cross-event tokens from different events are strictly rejected with CROSS_EVENT.
  */
-export async function resolveTrustedToken(
+async function resolveTrustedToken(
   rawInput: string,
-  eventId: string,
+  _legacyEventId?: string,
 ): Promise<ResolveTokenResult> {
   const trimmed = rawInput.trim();
   if (!trimmed || trimmed.length < 3) {
@@ -117,21 +116,16 @@ export async function resolveTrustedToken(
     if (!parsed) {
       return { ok: false, error: "INVALID_QR", message: "અમાન્ય અથવા છેડછાડ કરેલ QR કોડ." };
     }
-    if (parsed.eventId !== eventId) {
-      return { ok: false, error: "CROSS_EVENT", message: "આ QR કોડ અન્ય શિબિરનો છે." };
-    }
+    const targetEventId = parsed.eventId;
     const { data: card } = await (supabaseAdmin.from("event_id_cards") as any)
       .select("registration_id, registrations!inner(id, full_name, registration_number, event_id, mobile, designation, district, taluka)")
       .eq("token_id", parsed.tokenId)
-      .eq("event_id", eventId)
+      .eq("event_id", targetEventId)
       .maybeSingle();
 
     const reg = card?.registrations as unknown as ResolvedParticipant | undefined;
     if (!card || !reg) {
       return { ok: false, error: "NOT_FOUND", message: "આ QR કોડ સાથે જોડાયેલ રજીસ્ટ્રેશન મળ્યું નથી." };
-    }
-    if (reg.event_id !== eventId) {
-      return { ok: false, error: "CROSS_EVENT", message: "આ QR કોડ અન્ય શિબિરનો છે." };
     }
     return { ok: true, registration: reg };
   }
@@ -143,38 +137,26 @@ export async function resolveTrustedToken(
       const t = typeof parsed.t === "string" ? parsed.t.trim() : null;
       const r = typeof parsed.r === "string" ? parsed.r.trim() : null;
       if (t && r) {
-        // Search in target event first
-        const { data: regInEvent } = await supabaseAdmin
+        // Query registration by unique registration number
+        const { data: reg } = await supabaseAdmin
           .from("registrations")
           .select("id, full_name, registration_number, event_id, mobile, designation, district, taluka, qr_token")
           .eq("registration_number", r)
-          .eq("event_id", eventId)
           .maybeSingle();
 
-        if (regInEvent) {
-          if (regInEvent.qr_token && regInEvent.qr_token === t) {
-            return { ok: true, registration: regInEvent };
+        if (reg) {
+          if (reg.qr_token && reg.qr_token === t) {
+            return { ok: true, registration: reg };
           }
           // Also check card token_id
           const { data: card } = await (supabaseAdmin.from("event_id_cards") as any)
             .select("token_id")
-            .eq("registration_id", regInEvent.id)
-            .eq("event_id", eventId)
+            .eq("registration_id", reg.id)
+            .eq("event_id", reg.event_id)
             .maybeSingle();
           if (card && card.token_id === t) {
-            return { ok: true, registration: regInEvent };
+            return { ok: true, registration: reg };
           }
-        }
-
-        // Cross-Event Detection: check if registration exists in another event
-        const { data: otherReg } = await supabaseAdmin
-          .from("registrations")
-          .select("id, full_name, registration_number, event_id, qr_token")
-          .eq("registration_number", r)
-          .maybeSingle();
-
-        if (otherReg && otherReg.event_id !== eventId) {
-          return { ok: false, error: "CROSS_EVENT", message: "આ QR કોડ અન્ય શિબિરનો છે." };
         }
 
         return { ok: false, error: "INVALID_QR", message: "અમાન્ય અથવા મેળ ન ખાતો QR કોડ." };
@@ -192,9 +174,9 @@ export async function resolveTrustedToken(
       const r = url.searchParams.get("reg") || url.searchParams.get("r");
       if (t) {
         if (r) {
-          return resolveTrustedToken(JSON.stringify({ t, r }), eventId);
+          return resolveTrustedToken(JSON.stringify({ t, r }));
         }
-        return resolveTrustedToken(t, eventId);
+        return resolveTrustedToken(t);
       }
     } catch {}
   }
@@ -204,48 +186,26 @@ export async function resolveTrustedToken(
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
 
   if (isHex32 || isUuid) {
-    // Check registrations by qr_token in this event
+    // Check registrations by qr_token
     const { data: regByQr } = await supabaseAdmin
       .from("registrations")
       .select("id, full_name, registration_number, event_id, mobile, designation, district, taluka")
       .eq("qr_token", trimmed)
-      .eq("event_id", eventId)
       .maybeSingle();
 
     if (regByQr) {
       return { ok: true, registration: regByQr };
     }
 
-    // Check event_id_cards by token_id in this event
+    // Check event_id_cards by token_id
     const { data: card } = await (supabaseAdmin.from("event_id_cards") as any)
       .select("registration_id, registrations!inner(id, full_name, registration_number, event_id, mobile, designation, district, taluka)")
       .eq("token_id", trimmed)
-      .eq("event_id", eventId)
       .maybeSingle();
 
     const regByCard = card?.registrations as unknown as ResolvedParticipant | undefined;
     if (card && regByCard) {
       return { ok: true, registration: regByCard };
-    }
-
-    // Cross-Event Detection
-    const { data: otherReg } = await supabaseAdmin
-      .from("registrations")
-      .select("id, event_id")
-      .eq("qr_token", trimmed)
-      .maybeSingle();
-
-    if (otherReg && otherReg.event_id !== eventId) {
-      return { ok: false, error: "CROSS_EVENT", message: "આ QR કોડ અન્ય શિબિરનો છે." };
-    }
-
-    const { data: otherCard } = await (supabaseAdmin.from("event_id_cards") as any)
-      .select("id, event_id")
-      .eq("token_id", trimmed)
-      .maybeSingle();
-
-    if (otherCard && otherCard.event_id !== eventId) {
-      return { ok: false, error: "CROSS_EVENT", message: "આ QR કોડ અન્ય શિબિરનો છે." };
     }
   }
 
@@ -253,45 +213,7 @@ export async function resolveTrustedToken(
 }
 
 function requestMeta() {
-  const request = getRequest();
-  return {
-    ip:
-      request.headers.get("cf-connecting-ip") ??
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      null,
-    userAgent: request.headers.get("user-agent")?.slice(0, 500) ?? null,
-  };
-}
-
-async function logAttempt(input: {
-  eventId: string;
-  result:
-    | "invalid_qr"
-    | "not_registered"
-    | "scanner_inactive"
-    | "scanner_revoked"
-    | "unauthorized"
-    | "cross_event";
-  scannerId?: string | null;
-  registrationId?: string | null;
-  payloadHash?: string | null;
-}) {
-  try {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const meta = requestMeta();
-    await (supabaseAdmin.from("event_checkin_attempts") as any).insert({
-      event_id: input.eventId,
-      registration_id: input.registrationId ?? null,
-      scanner_id: input.scannerId ?? null,
-      method: "qr",
-      result: input.result,
-      payload_hash: input.payloadHash ?? null,
-      ip: meta.ip,
-      user_agent: meta.userAgent,
-    });
-  } catch (err) {
-    console.error("[logAttempt] error:", err);
-  }
+  return { ip: null as string | null, userAgent: null as string | null };
 }
 
 // -------------------------------------------------------------------------
@@ -473,7 +395,7 @@ export const operatorSignIn = createServerFn({ method: "POST" })
       .object({
         username: z.string().trim().min(2).max(100),
         password: z.string().min(1).max(200),
-        target_event_id: z.string().uuid(),
+        target_event_id: z.string().uuid().optional(),
       })
       .parse(input),
   )
@@ -499,22 +421,14 @@ export const operatorSignIn = createServerFn({ method: "POST" })
     }
 
     if (error || !scanner) {
-      return { ok: false as const, error: "ઓપરેટર યુઝરનેમ અથવા સ્કેનર કોડ મળ્યો નથી." };
-    }
-
-    // Strict event boundary enforcement: operator assigned event MUST match target event
-    if (scanner.event_id !== data.target_event_id) {
-      return {
-        ok: false as const,
-        error: "આ સ્કેનર ઓપરેટર અન્ય શિબિર માટે ફાળવેલ છે. કૃપા કરીને યોગ્ય શિબિરની સ્કેનર લિંક ખોલો.",
-      };
+      return { ok: false as const, error: "Invalid username or scanner key / અમાન્ય યુઝરનેમ અથવા સ્કેનર કી" };
     }
 
     if (scanner.revoked_at) {
-      return { ok: false as const, error: "આ સ્કેનર અધિકાર રદ કરવામાં આવ્યો છે (Revoked)." };
+      return { ok: false as const, error: "This scanner authorization has been revoked / આ સ્કેનર અધિકાર રદ કરવામાં આવ્યો છે." };
     }
     if (!scanner.is_active) {
-      return { ok: false as const, error: "આ સ્કેનર અધિકાર હાલમાં નિષ્ક્રિય છે (Inactive)." };
+      return { ok: false as const, error: "This scanner authorization is currently inactive / આ સ્કેનર અધિકાર હાલમાં નિષ્ક્રિય છે." };
     }
 
     // Password verification: supports scrypt and backward-compatible sha256
@@ -537,7 +451,7 @@ export const operatorSignIn = createServerFn({ method: "POST" })
     }
 
     if (!passwordValid) {
-      return { ok: false as const, error: "અમાન્ય પાસવર્ડ." };
+      return { ok: false as const, error: "Invalid username or scanner key / અમાન્ય યુઝરનેમ અથવા સ્કેનર કી" };
     }
 
     // Transparently upgrade legacy hash to scrypt on login
@@ -553,23 +467,26 @@ export const operatorSignIn = createServerFn({ method: "POST" })
       .update(updatePayload)
       .eq("id", scanner.id);
 
-    // Get event title
-    const { data: eventRow } = await supabaseAdmin
-      .from("events")
-      .select("general, district")
-      .eq("id", scanner.event_id)
-      .maybeSingle();
-
-    const eventGeneral = (eventRow?.general ?? {}) as Record<string, unknown>;
-    const eventTitle =
-      (eventGeneral.title as string) ||
-      (eventRow?.district ? `${eventRow.district} યોગ શિબિર` : "Gujarat State Yog Board Event");
+    // Get event title (or fallback to neutral scanner title)
+    let eventTitle = "Digital ID Card Scanner";
+    const targetEvent = data.target_event_id || scanner.event_id;
+    if (targetEvent) {
+      const { data: eventRow } = await supabaseAdmin
+        .from("events")
+        .select("general, district")
+        .eq("id", targetEvent)
+        .maybeSingle();
+      const eventGeneral = (eventRow?.general ?? {}) as Record<string, unknown>;
+      eventTitle =
+        (eventGeneral.title as string) ||
+        (eventRow?.district ? `${eventRow.district} યોગ શિબિર` : eventTitle);
+    }
 
     // Establish HttpOnly session cookie
     const session = await useSession<ScannerSession>(scannerSessionConfig());
     await session.update({
       scannerId: scanner.id,
-      eventId: scanner.event_id,
+      eventId: targetEvent,
       scannerName: scanner.scanner_name,
       operatorName: scanner.operator_name,
     });
@@ -579,7 +496,7 @@ export const operatorSignIn = createServerFn({ method: "POST" })
       scanner_id: scanner.id as string,
       scanner_name: scanner.scanner_name as string,
       operator_name: scanner.operator_name as string,
-      event_id: scanner.event_id as string,
+      event_id: targetEvent as string,
       event_title: eventTitle,
     };
   });
@@ -597,7 +514,7 @@ export const scannerSignIn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     // If username and password provided, use operatorSignIn logic
-    if (data.username && data.password && data.event_id) {
+    if (data.username && data.password) {
       return operatorSignIn({
         data: {
           username: data.username,
@@ -627,10 +544,6 @@ export const scannerSignIn = createServerFn({ method: "POST" })
       return { ok: false as const, error: "Scanner record not found." };
     }
 
-    if (data.event_id && scanner.event_id !== data.event_id) {
-      return { ok: false as const, error: "This scanner is registered for a different event." };
-    }
-
     const secretHash = await sha256(secret);
     if (secretHash !== scanner.secret_hash) {
       return { ok: false as const, error: "Invalid scanner credentials." };
@@ -643,10 +556,11 @@ export const scannerSignIn = createServerFn({ method: "POST" })
       return { ok: false as const, error: "This scanner authorization is currently inactive." };
     }
 
+    const targetEvent = data.event_id || scanner.event_id;
     const { data: eventRow } = await supabaseAdmin
       .from("events")
       .select("general, district")
-      .eq("id", scanner.event_id)
+      .eq("id", targetEvent)
       .maybeSingle();
 
     const eventGeneral = (eventRow?.general ?? {}) as Record<string, unknown>;
@@ -654,7 +568,7 @@ export const scannerSignIn = createServerFn({ method: "POST" })
     const session = await useSession<ScannerSession>(scannerSessionConfig());
     await session.update({
       scannerId: scanner.id,
-      eventId: scanner.event_id,
+      eventId: targetEvent,
       scannerName: scanner.scanner_name,
       operatorName: scanner.operator_name,
     });
@@ -663,7 +577,7 @@ export const scannerSignIn = createServerFn({ method: "POST" })
       ok: true as const,
       scanner_name: scanner.scanner_name as string,
       operator_name: scanner.operator_name as string,
-      event_id: scanner.event_id as string,
+      event_id: targetEvent as string,
       event_title: (eventGeneral.title as string) || "Gujarat State Yog Board Event",
     };
   });
@@ -677,38 +591,39 @@ export const operatorCheck = createServerFn({ method: "POST" })
 
     // 1. Check if scanner operator session exists
     const session = await useSession<ScannerSession>(scannerSessionConfig());
-    if (session.data.scannerId && session.data.eventId) {
-      // If target_event_id is specified, ensure session event matches
-      if (data?.target_event_id && session.data.eventId !== data.target_event_id) {
-        return { authed: false as const };
-      }
-
+    if (session.data.scannerId) {
       const { data: scanner } = await (supabaseAdmin.from("event_scanners") as any)
         .select("id, scanner_name, operator_name, is_active, revoked_at, event_id")
         .eq("id", session.data.scannerId)
-        .eq("event_id", session.data.eventId)
         .maybeSingle();
 
       if (scanner && scanner.is_active && !scanner.revoked_at) {
-        const { data: eventRow } = await supabaseAdmin
-          .from("events")
-          .select("general, district")
-          .eq("id", scanner.event_id)
-          .maybeSingle();
-
-        const eventGeneral = (eventRow?.general ?? {}) as Record<string, unknown>;
+        const currentEventId = data?.target_event_id || session.data.eventId || scanner.event_id;
+        let eventTitle = "Digital ID Card Scanner";
+        if (currentEventId) {
+          const { data: eventRow } = await supabaseAdmin
+            .from("events")
+            .select("general, district")
+            .eq("id", currentEventId)
+            .maybeSingle();
+          const eventGeneral = (eventRow?.general ?? {}) as Record<string, unknown>;
+          eventTitle =
+            (eventGeneral.title as string) ||
+            (eventRow?.district ? `${eventRow.district} યોગ શિબિર` : eventTitle);
+        }
 
         // Live attendance stats
         const [totalAttendedRes, operatorScansRes] = await Promise.all([
+          currentEventId
+            ? supabaseAdmin
+                .from("attendance")
+                .select("id", { count: "exact", head: true })
+                .eq("event_id", currentEventId)
+                .in("check_in_method", ["qr", "manual"])
+            : Promise.resolve({ count: 0 }),
           supabaseAdmin
             .from("attendance")
             .select("id", { count: "exact", head: true })
-            .eq("event_id", scanner.event_id)
-            .in("check_in_method", ["qr", "manual"]),
-          supabaseAdmin
-            .from("attendance")
-            .select("id", { count: "exact", head: true })
-            .eq("event_id", scanner.event_id)
             .eq("scanner_id", scanner.id),
         ]);
 
@@ -717,10 +632,8 @@ export const operatorCheck = createServerFn({ method: "POST" })
           scanner_id: scanner.id as string,
           scanner_name: scanner.scanner_name as string,
           operator_name: scanner.operator_name as string,
-          event_id: scanner.event_id as string,
-          event_title:
-            (eventGeneral.title as string) ||
-            (eventRow?.district ? `${eventRow.district} યોગ શિબિર` : "Gujarat State Yog Board Event"),
+          event_id: currentEventId as string,
+          event_title: eventTitle,
           present_count: totalAttendedRes.count ?? 0,
           scan_count: operatorScansRes.count ?? 0,
         };
@@ -810,37 +723,25 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const session = await useSession<ScannerSession>(scannerSessionConfig());
     let scannerId: string | null | undefined = session.data.scannerId;
-    let scannerEventId = session.data.eventId;
     const payloadHash = await sha256(data.qr_token);
 
     let isAdmin = false;
     let adminUserId: string | null = null;
-    if (!scannerId || !scannerEventId) {
+    if (!scannerId) {
       try {
         const { getAdminSession } = await import("@/lib/admin-auth");
         const admin = await getAdminSession();
         if (admin.data.userId && admin.data.role) {
           isAdmin = true;
           adminUserId = admin.data.userId;
-          scannerEventId = data.target_event_id || VADODARA_EVENT_ID;
-          scannerId = null;
         }
       } catch {
         // Not admin
       }
     }
 
-    if (!scannerEventId || (!scannerId && !isAdmin)) {
-      if (data.target_event_id) {
-        await logAttempt({ eventId: data.target_event_id, result: "unauthorized", payloadHash });
-      }
+    if (!scannerId && !isAdmin) {
       return { ok: false as const, state: "unauthorized" as const, error: "સ્કેનર લોગિન જરૂરી છે." };
-    }
-
-    // Reject if client supplied target_event_id conflicts with session event
-    if (data.target_event_id && data.target_event_id !== scannerEventId) {
-      await logAttempt({ eventId: data.target_event_id, result: "cross_event", scannerId, payloadHash });
-      return { ok: false as const, state: "invalid" as const, error: "સ્કેનર અન્ય શિબિર માટે જોડાયેલ છે." };
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -850,16 +751,9 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
       const { data: scanner } = await (supabaseAdmin.from("event_scanners") as any)
         .select("is_active, revoked_at")
         .eq("id", scannerId)
-        .eq("event_id", scannerEventId)
         .maybeSingle();
 
       if (!scanner || scanner.revoked_at || !scanner.is_active) {
-        await logAttempt({
-          eventId: scannerEventId,
-          result: scanner?.revoked_at ? "scanner_revoked" : scanner ? "scanner_inactive" : "unauthorized",
-          scannerId,
-          payloadHash,
-        });
         return {
           ok: false as const,
           state: "unauthorized" as const,
@@ -868,16 +762,9 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
       }
     }
 
-    // Authoritative Universal QR Token Resolution
-    const resolved = await resolveTrustedToken(data.qr_token, scannerEventId);
+    // Authoritative Universal QR Token Resolution (Event-Aware directly from the QR)
+    const resolved = await resolveTrustedToken(data.qr_token);
     if (!resolved.ok) {
-      await logAttempt({
-        eventId: scannerEventId,
-        result: resolved.error === "CROSS_EVENT" ? "cross_event" : "invalid_qr",
-        scannerId,
-        payloadHash,
-      });
-
       if (scannerId) {
         // Update invalid_scans on event_scanners
         await supabaseAdmin
@@ -897,44 +784,51 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
     }
 
     const reg = resolved.registration;
-
-    // Strict event boundary verification
-    if (reg.event_id !== scannerEventId) {
-      await logAttempt({ eventId: scannerEventId, result: "cross_event", scannerId, payloadHash });
-      return { ok: false as const, state: "invalid" as const, error: "આ QR કોડ અન્ય શિબિરનો છે." };
-    }
+    // The participant's actual event from the registration is authoritative!
+    const participantEventId = reg.event_id;
 
     const meta = requestMeta();
-    const { data: rows, error: rpcErr } = await (supabaseAdmin.rpc as any)("record_event_checkin", {
-      _event_id: scannerEventId,
-      _registration_id: reg.id,
-      _method: "qr",
-      _scanner_id: scannerId,
-      _checked_in_by: adminUserId || session.data.operatorName || "operator",
-      _payload_hash: payloadHash,
-      _ip: meta.ip,
-      _user_agent: meta.userAgent,
-    });
+    const [rpcResult, eventRowRes] = await Promise.all([
+      (supabaseAdmin.rpc as any)("record_event_checkin", {
+        _event_id: participantEventId,
+        _registration_id: reg.id,
+        _method: "qr",
+        _scanner_id: scannerId ?? null,
+        _checked_in_by: adminUserId || session.data.operatorName || session.data.scannerName || "operator",
+        _payload_hash: payloadHash,
+        _ip: meta.ip,
+        _user_agent: meta.userAgent,
+      }),
+      supabaseAdmin
+        .from("events")
+        .select("general, district")
+        .eq("id", participantEventId)
+        .maybeSingle(),
+    ]);
 
-    if (rpcErr || !rows?.[0]) {
-      console.error("[operatorCheckIn] RPC error:", rpcErr);
+    if (rpcResult.error || !rpcResult.data?.[0]) {
+      console.error("[operatorCheckIn] RPC error:", rpcResult.error);
       return { ok: false as const, state: "error" as const, error: "હાજરી નોંધવામાં ક્ષતિ આવી. ફરી પ્રયાસ કરો." };
     }
 
-    const result = rows[0] as { result: string; original_check_in: string };
+    const result = rpcResult.data[0] as { result: string; original_check_in: string };
+    const eventGeneral = (eventRowRes.data?.general ?? {}) as Record<string, unknown>;
+    const eventDistrict = (eventRowRes.data?.district as string) || "";
+    const eventTitle =
+      (eventGeneral.title as string) ||
+      (eventDistrict ? `${eventDistrict} યોગ શિબિર` : "Gujarat State Yog Board Event");
 
-    // Fetch updated live counts
+    // Fetch updated live counts for this participant's event and operator's total scans
     const [totalAttendedRes, operatorScansRes] = await Promise.all([
       supabaseAdmin
         .from("attendance")
         .select("id", { count: "exact", head: true })
-        .eq("event_id", scannerEventId)
+        .eq("event_id", participantEventId)
         .in("check_in_method", ["qr", "manual"]),
       scannerId
         ? supabaseAdmin
             .from("attendance")
             .select("id", { count: "exact", head: true })
-            .eq("event_id", scannerEventId)
             .eq("scanner_id", scannerId)
         : Promise.resolve({ count: 0 }),
     ]);
@@ -944,6 +838,9 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
       state: result.result === "duplicate" ? ("duplicate" as const) : ("success" as const),
       participant_name: reg.full_name,
       participant_id: reg.registration_number,
+      event_id: participantEventId,
+      event_title: eventTitle,
+      district: eventDistrict,
       check_in_time: result.original_check_in,
       present_count: totalAttendedRes.count ?? 0,
       scan_count: operatorScansRes.count ?? 0,
@@ -963,29 +860,34 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const session = await useSession<ScannerSession>(scannerSessionConfig());
-    let targetEventId = session.data.eventId;
+    let authed = Boolean(session.data.scannerId);
 
-    if (!targetEventId) {
+    if (!authed) {
       try {
         const { getAdminSession } = await import("@/lib/admin-auth");
         const admin = await getAdminSession();
         if (admin.data.userId) {
-          targetEventId = data.target_event_id || VADODARA_EVENT_ID;
+          authed = true;
         }
       } catch {}
     }
 
-    if (!targetEventId) {
+    if (!authed) {
       return { ok: false as const, error: "સ્કેનર અધિકાર જરૂરી છે.", rows: [] };
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const safe = data.query.replace(/[%_\\]/g, "\\$&");
 
-    const { data: rows, error } = await supabaseAdmin
+    let queryBuilder = supabaseAdmin
       .from("registrations")
-      .select("id, registration_number, full_name, mobile, district, custom_fields")
-      .eq("event_id", targetEventId)
+      .select("id, registration_number, full_name, mobile, district, event_id, custom_fields");
+
+    if (data.target_event_id) {
+      queryBuilder = queryBuilder.eq("event_id", data.target_event_id);
+    }
+
+    const { data: rows, error } = await queryBuilder
       .or(`full_name.ilike.%${safe}%,mobile.ilike.%${safe}%,registration_number.ilike.%${safe}%`)
       .limit(25);
 
@@ -1000,7 +902,6 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
       const { data: attended } = await supabaseAdmin
         .from("attendance")
         .select("registration_id")
-        .eq("event_id", targetEventId)
         .in("registration_id", regIds);
       (attended ?? []).forEach((a) => {
         if (a.registration_id) attendedSet.add(a.registration_id);
@@ -1027,64 +928,79 @@ export const operatorManualCheckIn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const session = await useSession<ScannerSession>(scannerSessionConfig());
-    let targetEventId = session.data.eventId;
     let operatorName = session.data.operatorName || session.data.scannerName || "Operator";
     let scannerId = session.data.scannerId;
 
     let adminUserId: string | null = null;
-    if (!targetEventId) {
+    let authed = Boolean(scannerId);
+    if (!scannerId) {
       try {
         const { getAdminSession } = await import("@/lib/admin-auth");
         const admin = await getAdminSession();
         if (admin.data.userId) {
-          targetEventId = data.target_event_id || VADODARA_EVENT_ID;
+          authed = true;
           adminUserId = admin.data.userId;
           operatorName = admin.data.username || "Admin";
         }
       } catch {}
     }
 
-    if (!targetEventId) {
+    if (!authed) {
       return { ok: false as const, error: "સ્કેનર અધિકાર જરૂરી છે." };
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // Verify registration belongs to targetEventId
+    // Look up registration to determine authoritative event_id
     const { data: reg, error: regErr } = await supabaseAdmin
       .from("registrations")
       .select("id, full_name, registration_number, event_id")
       .eq("id", data.registration_id)
-      .eq("event_id", targetEventId)
       .maybeSingle();
 
     if (regErr || !reg) {
-      return { ok: false as const, error: "ભાગ લેનાર આ શિબિરમાં મળ્યા નથી." };
+      return { ok: false as const, error: "ભાગ લેનાર મળ્યા નથી." };
     }
 
     const meta = requestMeta();
-    const { data: rows, error } = await (supabaseAdmin.rpc as any)("record_event_checkin", {
-      _event_id: targetEventId,
-      _registration_id: reg.id,
-      _method: "manual",
-      _scanner_id: scannerId ?? null,
-      _checked_in_by: adminUserId || operatorName,
-      _payload_hash: null,
-      _ip: meta.ip,
-      _user_agent: meta.userAgent,
-    });
+    const [rpcResult, eventRowRes] = await Promise.all([
+      (supabaseAdmin.rpc as any)("record_event_checkin", {
+        _event_id: reg.event_id,
+        _registration_id: reg.id,
+        _method: "manual",
+        _scanner_id: scannerId ?? null,
+        _checked_in_by: adminUserId || operatorName,
+        _payload_hash: null,
+        _ip: meta.ip,
+        _user_agent: meta.userAgent,
+      }),
+      supabaseAdmin
+        .from("events")
+        .select("general, district")
+        .eq("id", reg.event_id)
+        .maybeSingle(),
+    ]);
 
-    if (error || !rows?.[0]) {
-      console.error("[operatorManualCheckIn] error:", error);
+    if (rpcResult.error || !rpcResult.data?.[0]) {
+      console.error("[operatorManualCheckIn] error:", rpcResult.error);
       return { ok: false as const, error: "મેન્યુઅલ હાજરી નોંધવામાં નિષ્ફળતા મળી." };
     }
 
+    const eventGeneral = (eventRowRes.data?.general ?? {}) as Record<string, unknown>;
+    const eventDistrict = (eventRowRes.data?.district as string) || "";
+    const eventTitle =
+      (eventGeneral.title as string) ||
+      (eventDistrict ? `${eventDistrict} યોગ શિબિર` : "Gujarat State Yog Board Event");
+
     return {
       ok: true as const,
-      state: rows[0].result as "success" | "duplicate",
+      state: rpcResult.data[0].result as "success" | "duplicate",
       participant_name: reg.full_name,
       participant_id: reg.registration_number,
-      check_in_time: rows[0].original_check_in as string,
+      event_id: reg.event_id,
+      event_title: eventTitle,
+      district: eventDistrict,
+      check_in_time: rpcResult.data[0].original_check_in as string,
     };
   });
 
@@ -1280,7 +1196,7 @@ export const adminSetScannerStatus = createServerFn({ method: "POST" })
   });
 
 export const adminListScannerOperators = createServerFn({ method: "POST" })
-  .inputValidator((input: unknown) => z.object({ event_id: z.string().uuid() }).parse(input))
+  .inputValidator((input: unknown) => z.object({ event_id: z.string().uuid().optional() }).optional().parse(input ?? {}))
   .handler(async ({ data }) => {
     await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -1289,7 +1205,7 @@ export const adminListScannerOperators = createServerFn({ method: "POST" })
       .select(
         "id, event_id, scanner_code, scanner_name, operator_name, mobile, is_active, revoked_at, last_login_at, last_activity_at, total_scans, successful_scans, duplicate_attempts, invalid_scans, created_at"
       )
-      .eq("event_id", data.event_id)
+      .order("is_active", { ascending: false })
       .order("created_at", { ascending: false });
 
     if (error) {

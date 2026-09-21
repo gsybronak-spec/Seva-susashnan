@@ -996,7 +996,7 @@ export const adminList = createServerFn({ method: "POST" })
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    const session = await requireAdmin();
+    const session = await requireSuperAdmin();
     const { resolveEventFilter } = await import("@/lib/admin-scope.server");
     const filter = await resolveEventFilter(session, data.event_id ?? null);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -1153,7 +1153,7 @@ export const adminExportBatch = createServerFn({ method: "POST" })
       .parse(input ?? {}),
   )
   .handler(async ({ data }) => {
-    const session = await requireAdmin();
+    const session = await requireSuperAdmin();
     const { resolveEventFilter } = await import("@/lib/admin-scope.server");
     const filter = await resolveEventFilter(session, data.event_id ?? null);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -1595,6 +1595,95 @@ export const adminStats = createServerFn({ method: "POST" })
       byAgeGroup,
       leaderboard: s.leaderboard ?? [],
       partnerLeaderboard: s.partnerLeaderboard ?? [],
+    };
+  });
+
+// ---------------- Viewer Admin: Aggregate District Summary ----------------
+
+export type ViewerDashboardStatsResult = {
+  ok: boolean;
+  error?: string;
+  summary: {
+    total_events: number;
+    active_events: number;
+    total_registrations: number;
+    total_checkins: number;
+    overall_percentage: number;
+  };
+  rows: Array<{
+    event_id: string;
+    event_name: string;
+    district_name: string;
+    slug: string;
+    is_active: boolean;
+    registration_count: number;
+    checkin_count: number;
+    checkin_percentage: number;
+  }>;
+};
+
+export const viewerDashboardStats = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ allowed_event_ids: z.array(z.string().uuid()).optional() }).optional().parse(input ?? {})
+  )
+  .handler(async ({ data }): Promise<ViewerDashboardStatsResult> => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: rows, error } = await (supabaseAdmin.rpc as any)("viewer_dashboard_stats", {
+      _allowed_event_ids: data?.allowed_event_ids && data.allowed_event_ids.length > 0 ? data.allowed_event_ids : null,
+    });
+
+    if (error) {
+      console.error("[viewerDashboardStats] RPC error:", error);
+      return {
+        ok: false,
+        error: "Failed to load summary statistics.",
+        summary: {
+          total_events: 0,
+          active_events: 0,
+          total_registrations: 0,
+          total_checkins: 0,
+          overall_percentage: 0,
+        },
+        rows: [],
+      };
+    }
+
+    const typedRows = (rows ?? []).map((r: any) => {
+      const reg = Number(r.registration_count || 0);
+      const chk = Number(r.checkin_count || 0);
+      const pct = reg > 0 ? Number(((chk / reg) * 100).toFixed(2)) : 0;
+      return {
+        event_id: String(r.event_id),
+        event_name: String(r.event_name || ""),
+        district_name: String(r.district_name || ""),
+        slug: String(r.slug || ""),
+        is_active: Boolean(r.is_active),
+        registration_count: reg,
+        checkin_count: chk,
+        checkin_percentage: pct,
+      };
+    });
+
+    // Sort by registration_count desc, then district_name asc
+    typedRows.sort((a: any, b: any) => b.registration_count - a.registration_count || a.district_name.localeCompare(b.district_name));
+
+    const totalReg = typedRows.reduce((acc: number, r: any) => acc + r.registration_count, 0);
+    const totalChk = typedRows.reduce((acc: number, r: any) => acc + r.checkin_count, 0);
+    const activeEvents = typedRows.filter((r: any) => r.is_active).length;
+    const overallPct = totalReg > 0 ? Number(((totalChk / totalReg) * 100).toFixed(2)) : 0;
+
+    return {
+      ok: true,
+      summary: {
+        total_events: typedRows.length,
+        active_events: activeEvents,
+        total_registrations: totalReg,
+        total_checkins: totalChk,
+        overall_percentage: overallPct,
+      },
+      rows: typedRows,
     };
   });
 

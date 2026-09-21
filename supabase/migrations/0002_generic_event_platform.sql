@@ -141,7 +141,7 @@ BEGIN
   IF _method = 'qr' THEN
     IF _scanner_id IS NOT NULL THEN
       SELECT * INTO v_scanner FROM public.event_scanners
-       WHERE id = _scanner_id AND event_id = _event_id;
+       WHERE id = _scanner_id;
       IF NOT FOUND THEN RAISE EXCEPTION 'unauthorized'; END IF;
       IF v_scanner.revoked_at IS NOT NULL THEN RAISE EXCEPTION 'scanner_revoked'; END IF;
       IF v_scanner.is_active IS NOT TRUE THEN RAISE EXCEPTION 'scanner_inactive'; END IF;

@@ -17,6 +17,7 @@ import { Route as ContactRouteImport } from './routes/contact'
 import { Route as IdcardRouteImport } from './routes/idcard'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as ScanRouteImport } from './routes/scan'
 import { Route as SuccessRouteImport } from './routes/success'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as VadodaraScannerRouteImport } from './routes/vadodara-scanner'
@@ -73,6 +74,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScanRoute = ScanRouteImport.update({
+  id: '/scan',
+  path: '/scan',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SuccessRoute = SuccessRouteImport.update({
@@ -170,6 +176,7 @@ export interface FileRoutesByFullPath {
   '/idcard': typeof IdcardRoute
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRouteWithChildren
+  '/scan': typeof ScanRoute
   '/success': typeof SuccessRoute
   '/terms': typeof TermsRoute
   '/vadodara-scanner': typeof VadodaraScannerRoute
@@ -196,6 +203,7 @@ export interface FileRoutesByTo {
   '/idcard': typeof IdcardRoute
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRouteWithChildren
+  '/scan': typeof ScanRoute
   '/success': typeof SuccessRoute
   '/terms': typeof TermsRoute
   '/vadodara-scanner': typeof VadodaraScannerRoute
@@ -223,6 +231,7 @@ export interface FileRoutesById {
   '/idcard': typeof IdcardRoute
   '/privacy': typeof PrivacyRoute
   '/register': typeof RegisterRouteWithChildren
+  '/scan': typeof ScanRoute
   '/success': typeof SuccessRoute
   '/terms': typeof TermsRoute
   '/vadodara-scanner': typeof VadodaraScannerRoute
@@ -252,6 +261,7 @@ export interface FileRouteTypes {
     | '/idcard'
     | '/privacy'
     | '/register'
+    | '/scan'
     | '/success'
     | '/terms'
     | '/vadodara-scanner'
@@ -278,6 +288,7 @@ export interface FileRouteTypes {
     | '/idcard'
     | '/privacy'
     | '/register'
+    | '/scan'
     | '/success'
     | '/terms'
     | '/vadodara-scanner'
@@ -304,6 +315,7 @@ export interface FileRouteTypes {
     | '/idcard'
     | '/privacy'
     | '/register'
+    | '/scan'
     | '/success'
     | '/terms'
     | '/vadodara-scanner'
@@ -332,6 +344,7 @@ export interface RootRouteChildren {
   IdcardRoute: typeof IdcardRoute
   PrivacyRoute: typeof PrivacyRoute
   RegisterRoute: typeof RegisterRouteWithChildren
+  ScanRoute: typeof ScanRoute
   SuccessRoute: typeof SuccessRoute
   TermsRoute: typeof TermsRoute
   VadodaraScannerRoute: typeof VadodaraScannerRoute
@@ -396,6 +409,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scan': {
+      id: '/scan'
+      path: '/scan'
+      fullPath: '/scan'
+      preLoaderRoute: typeof ScanRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/success': {
@@ -587,6 +607,7 @@ const rootRouteChildren: RootRouteChildren = {
   IdcardRoute: IdcardRoute,
   PrivacyRoute: PrivacyRoute,
   RegisterRoute: RegisterRouteWithChildren,
+  ScanRoute: ScanRoute,
   SuccessRoute: SuccessRoute,
   TermsRoute: TermsRoute,
   VadodaraScannerRoute: VadodaraScannerRoute,

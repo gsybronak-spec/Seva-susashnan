@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { GenericScannerView } from "@/components/pages/generic-scanner-view";
-import { VADODARA_EVENT_ID } from "@/lib/event-engine.functions";
+import { VADODARA_EVENT_ID } from "@/lib/event-config";
 
 export const Route = createFileRoute("/vadodara-scanner")({
   component: () => <GenericScannerView defaultEventId={VADODARA_EVENT_ID} />,
