@@ -505,7 +505,7 @@ export function EventIdCard({
             <span>ખાસ સૂચના</span>
           </div>
           <p className="text-xs sm:text-sm text-amber-950 leading-relaxed font-medium">
-            ડિજિટલ ID Card ડાઉનલોડ કરીને સાચવી રાખવું. શિબિરમાં તમારી હાજરી નોંધાવવા માટે આ ID Card જરૂરી છે. તમારી હાજરી નોંધાયા બાદ જ તમે તમારું પ્રમાણપત્ર (Certificate) ડાઉનલોડ કરી શકશો.
+            ડિજિટલ ID Card ડાઉનલોડ કરીને સાચવી રાખવું. યોગ શિબિર પૂર્ણ થયા બાદ તમે તમારું પ્રમાણપત્ર (Certificate) ડાઉનલોડ કરી શકશો.
           </p>
         </div>
       </div>

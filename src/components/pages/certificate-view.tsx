@@ -17,7 +17,8 @@ type StatusResult =
       participant_name: string;
       registration_number: string;
       event_title: string;
-      joined: boolean;
+      event_completed?: boolean;
+      joined?: boolean;
       eligible: boolean;
       certificate_enabled: boolean;
       issue: { certificate_number: string; status: string; issued_at: string | null } | null;
@@ -258,19 +259,30 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
 
             {!status.certificate_enabled && (
               <StatusMessage kind="info" icon={<Clock className="h-4 w-4" />}>
-                Certificate downloads will open after the event is completed.
+                પ્રમાણપત્ર સેવા હાલમાં ઉપલબ્ધ નથી.
               </StatusMessage>
             )}
 
             {status.certificate_enabled && !status.eligible && (
-              <StatusMessage kind="warn" icon={<Award className="h-4 w-4" />}>
-                Physical attendance check-in is required to receive this certificate. No verified attendance was recorded for this registration at the event venue.
-              </StatusMessage>
-            )}            {(status.issue?.status === "issued" || status.issue?.status === "approved") && (
+              <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50/90 p-5 sm:p-6 text-center shadow-xs space-y-2">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+                  <Clock className="h-6 w-6" />
+                </div>
+                <div className="text-lg font-bold text-amber-950">પ્રમાણપત્ર હાલમાં ઉપલબ્ધ નથી.</div>
+                <div className="text-sm font-medium text-amber-900 leading-relaxed max-w-md mx-auto">
+                  યોગ શિબિર પૂર્ણ થયા બાદ પ્રમાણપત્ર ડાઉનલોડ કરી શકાશે.
+                </div>
+              </div>
+            )}
+
+            {status.eligible && (status.issue?.status === "issued" || status.issue?.status === "approved") && (
               <div className="mt-6 space-y-4">
-                <div className="rounded-md border border-brand-success/40 bg-brand-success/10 p-3 text-center text-sm">
-                  <ShieldCheck className="mr-1 inline h-4 w-4 text-brand-success" />
-                  Certificate No. <span className="font-mono">{status.issue.certificate_number}</span>
+                <div className="rounded-2xl border border-emerald-300 bg-emerald-50/90 p-4 text-center">
+                  <div className="text-lg font-bold text-emerald-950">તમારું પ્રમાણપત્ર તૈયાર છે</div>
+                  <div className="mt-1 flex items-center justify-center gap-1.5 text-sm font-semibold text-emerald-800">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                    <span>Certificate No. <span className="font-mono">{status.issue.certificate_number}</span></span>
+                  </div>
                 </div>
 
                 {rendering && <p className="text-center text-sm text-muted-foreground">Preparing certificate…</p>}

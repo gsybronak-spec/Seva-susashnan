@@ -1,16 +1,21 @@
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
 import {
   formatCertificateNumber,
+  isEventCompleted,
   mergeConfig,
   type CertificateNumberFormat,
   type EventCertificate,
   type EventConfig,
+  type EventStatus,
 } from "@/lib/event-config";
 
-type ActiveEvent = {
+export type ActiveEvent = {
   id: string;
   district_id: string | null;
   config: EventConfig;
+  event_date?: string | null;
+  lifecycle_status?: string | null;
+  status?: Partial<EventStatus> | null;
 };
 
 // Resolve the CURRENT ACTIVE published event (used only by the global,
@@ -45,11 +50,23 @@ async function resolveActiveCertificateEvent(): Promise<ActiveEvent | null> {
     data = latest;
   }
   if (!data) return null;
-  const raw = data as unknown as Partial<EventConfig> & { id: string; district_id?: string | null };
+  const raw = data as unknown as Partial<EventConfig> & {
+    id: string;
+    district_id?: string | null;
+    event_date?: string | null;
+    lifecycle_status?: string | null;
+    status?: Partial<EventStatus> | null;
+  };
   const cfg = mergeConfig(raw);
-  return { id: raw.id, district_id: raw.district_id ?? null, config: { ...cfg, id: raw.id } };
+  return {
+    id: raw.id,
+    district_id: raw.district_id ?? null,
+    event_date: raw.event_date ?? null,
+    lifecycle_status: raw.lifecycle_status ?? null,
+    status: raw.status ?? null,
+    config: { ...cfg, id: raw.id },
+  };
 }
-
 
 export async function loadCertificateEvent(districtSlug?: string | null): Promise<ActiveEvent | null> {
   const slug = (districtSlug ?? "").trim().toLowerCase();
@@ -57,15 +74,45 @@ export async function loadCertificateEvent(districtSlug?: string | null): Promis
   const { resolveEvent } = await import("@/lib/event-resolver.server");
   const resolved = await resolveEvent(slug);
   if (!resolved || !resolved.event?.id) return null;
-  const raw = resolved.event as Partial<EventConfig> & { id: string };
+  const raw = resolved.event as Partial<EventConfig> & {
+    id: string;
+    event_date?: string | null;
+    lifecycle_status?: string | null;
+    status?: Partial<EventStatus> | null;
+  };
   const cfg = mergeConfig(raw);
   return {
     id: raw.id,
     district_id: resolved.district_id,
+    event_date: raw.event_date ?? null,
+    lifecycle_status: raw.lifecycle_status ?? null,
+    status: raw.status ?? null,
     config: { ...cfg, id: raw.id },
   };
 }
 
+export async function loadEventById(eventId: string): Promise<ActiveEvent | null> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: w } = await supabaseAdmin
+    .from("events").select("*").eq("id", eventId).maybeSingle();
+  if (!w) return null;
+  const raw = w as unknown as Partial<EventConfig> & {
+    id: string;
+    district_id?: string | null;
+    event_date?: string | null;
+    lifecycle_status?: string | null;
+    status?: Partial<EventStatus> | null;
+  };
+  const cfg = mergeConfig(raw);
+  return {
+    id: raw.id,
+    district_id: raw.district_id ?? null,
+    event_date: raw.event_date ?? null,
+    lifecycle_status: raw.lifecycle_status ?? null,
+    status: raw.status ?? null,
+    config: { ...cfg, id: raw.id },
+  };
+}
 
 export async function hasCheckedIn(regNo: string, eventId: string): Promise<boolean> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -96,10 +143,13 @@ export async function nextCertNumber(fmt: CertificateNumberFormat): Promise<stri
   return `${formatCertificateNumber(fmt, base)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
-export function isEligibleForCertificate(cert: EventCertificate, joined?: boolean) {
-  if (!cert.enabled) return false;
-  if (cert.attendance_required && !joined) return false;
-  return true;
+export function isEligibleForCertificate(event: ActiveEvent): boolean {
+  return isEventCompleted({
+    general: event.config.general,
+    event_date: event.event_date ?? event.config.general.event_date,
+    lifecycle_status: event.lifecycle_status,
+    status: event.status,
+  });
 }
 
 export async function getScopedCertificateRows(input: {
@@ -207,22 +257,22 @@ export async function bulkIssueCertificates(eventId?: string) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   let event: ActiveEvent | null = null;
   if (eventId) {
-    const { data: w } = await supabaseAdmin
-      .from("events").select("*").eq("id", eventId).maybeSingle();
-    if (w) {
-      const cfg = mergeConfig(w as unknown as Partial<EventConfig>);
-      event = {
-        id: (w as { id: string }).id,
-        district_id: (w as { district_id: string | null }).district_id ?? null,
-        config: { ...cfg, id: (w as { id: string }).id },
-      };
-    }
+    event = await loadEventById(eventId);
   } else {
     event = await loadCertificateEvent();
   }
   if (!event) return { ok: false as const, error: "Event not found." };
   const cert = event.config.certificate;
   if (!cert.enabled) return { ok: false as const, error: "Certificates are disabled in settings." };
+
+  // Rule: Registered participant + event completed. Attendance is NOT required.
+  const eligible = isEligibleForCertificate(event);
+  if (!eligible) {
+    return {
+      ok: false as const,
+      error: "Event has not completed yet. Certificates can only be issued after the Yog Shibir is completed.",
+    };
+  }
 
   const fetchAllPaginated = async <T,>(table: string, select: string, extraFilter?: (q: any) => any) => {
     const PAGE = 1000;
@@ -231,7 +281,7 @@ export async function bulkIssueCertificates(eventId?: string) {
       let q = supabaseAdmin
         .from(table as any)
         .select(select)
-        .eq("event_id", event.id)
+        .eq("event_id", event!.id)
         .order("id", { ascending: true })
         .range(from, from + PAGE - 1);
       if (extraFilter) q = extraFilter(q);
@@ -255,34 +305,13 @@ export async function bulkIssueCertificates(eventId?: string) {
   );
   const existingSet = new Set(existing.map((r) => r.registration_number));
 
-  const attCfg = (event.config.attendance ?? {}) as {
-    enable_tracking?: boolean;
-    min_percent?: number;
-  };
-  const attendanceRequired = attCfg.enable_tracking !== false && cert.attendance_required !== false;
-
-  let attendedSet = new Set<string>();
-  if (attendanceRequired) {
-    const attendedRows = await fetchAllPaginated<{ registration_number: string }>(
-      "attendance",
-      "id, registration_number",
-    );
-    attendedSet = new Set(attendedRows.map((a) => a.registration_number));
-  }
-
   let issued = 0;
   let skipped = 0;
   const now = new Date().toISOString();
   
-  // Issue certificates only to eligible participants (respecting attendance requirement)
-  // We process sequentially because nextCertNumber performs collision checks.
+  // Issue certificates to ALL registered participants without filtering by attendance
   for (const r of regs) {
     if (existingSet.has(r.registration_number)) { skipped += 1; continue; }
-    if (!cert.enabled) { skipped += 1; continue; }
-    if (attendanceRequired && !attendedSet.has(r.registration_number)) {
-      skipped += 1;
-      continue;
-    }
     
     const number = await nextCertNumber(cert.number_format);
     const { error } = await supabaseAdmin.from("certificate_issues").insert({

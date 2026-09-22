@@ -496,7 +496,7 @@ export const DEFAULT_CONFIG: EventConfig = {
     enable_live_dashboard: false,
   },
   certificate: {
-    enabled: false,
+    enabled: true,
     title: "Certificate of Participation",
     subtitle: "Yog ane Dhyan Shibir",
     background_url: "",
@@ -878,3 +878,87 @@ export function formatCertificateNumber(
   const sep = fmt.separator ?? "-";
   return [fmt.prefix || "CERT", year, padded].filter(Boolean).join(sep);
 }
+
+/**
+ * Calculate the event's scheduled end timestamp in milliseconds (UTC ms).
+ * Strictly evaluated in Asia/Kolkata (+05:30) timezone.
+ * Returns null if the scheduled end datetime cannot be reliably resolved.
+ */
+export function getEventEndTimestampMs(event: {
+  general?: Partial<EventGeneral> | null;
+  event_date?: string | null;
+  lifecycle_status?: string | null;
+  status?: Partial<EventStatus> | null;
+}): number | null {
+  const g = event.general ?? {};
+  const dateStr = (g.end_date || g.event_date || event.event_date || "").trim();
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return null;
+  }
+
+  let endTimeStr = (g.end_time || "").trim();
+
+  // If end_time is not directly provided in HH:mm format, derive from start_time + duration_minutes
+  if (!endTimeStr && g.start_time && /^\d{1,2}:\d{2}$/.test(g.start_time)) {
+    const [sh, sm] = g.start_time.split(":").map(Number);
+    const duration = typeof g.duration_minutes === "number" && g.duration_minutes > 0 ? g.duration_minutes : 120;
+    const totalMinutes = sh * 60 + sm + duration;
+    const eh = Math.floor(totalMinutes / 60) % 24;
+    const em = totalMinutes % 60;
+    endTimeStr = `${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}`;
+  }
+
+  // If still not found, try parsing from event_time string like "06:00 AM – 08:00 AM" or "06:00 AM to 08:00 AM"
+  if (!endTimeStr && g.event_time) {
+    const match = g.event_time.match(/[-–—to\s]+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (match) {
+      let h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      const ampm = (match[3] || "").toUpperCase();
+      if (ampm === "PM" && h < 12) h += 12;
+      if (ampm === "AM" && h === 12) h = 0;
+      endTimeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+  }
+
+  // If endTimeStr is still missing or invalid, do NOT guess or prematurely unlock
+  if (!endTimeStr || !/^\d{1,2}:\d{2}$/.test(endTimeStr)) {
+    return null;
+  }
+
+  const [h, m] = endTimeStr.split(":").map((v) => String(v).padStart(2, "0"));
+  // Form an exact ISO 8601 string with Indian Standard Time offset (+05:30)
+  const isoWithOffset = `${dateStr}T${h}:${m}:00+05:30`;
+  const timeMs = Date.parse(isoWithOffset);
+  return Number.isNaN(timeMs) ? null : timeMs;
+}
+
+/**
+ * Returns true if the event has been completed.
+ * Completion is determined by:
+ * 1. Explicit lifecycle_status === 'completed' or status.value === 'completed'
+ * 2. Or scheduled end datetime in Asia/Kolkata (+05:30) has passed.
+ * Note: If lifecycle_status is 'cancelled' or 'archived', returns false.
+ * If scheduled end datetime cannot be reliably determined, returns false (never early-unlock).
+ */
+export function isEventCompleted(event: {
+  general?: Partial<EventGeneral> | null;
+  event_date?: string | null;
+  lifecycle_status?: string | null;
+  status?: Partial<EventStatus> | null;
+}): boolean {
+  if (event.lifecycle_status === "completed" || event.status?.value === "completed") {
+    return true;
+  }
+  if (event.lifecycle_status === "cancelled" || event.lifecycle_status === "archived") {
+    return false;
+  }
+
+  const endMs = getEventEndTimestampMs(event);
+  if (endMs === null) {
+    return false;
+  }
+
+  return Date.now() >= endMs;
+}
+

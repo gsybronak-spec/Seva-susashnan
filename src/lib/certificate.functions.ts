@@ -6,14 +6,19 @@ import {
   getCertificateRenderPayload,
   getScopedCertificateRows,
   loadCertificateEvent,
+  loadEventById,
   nextCertNumber,
   regenerateCertificateIssue,
   rejectCertificateIssue,
+  type ActiveEvent,
 } from "@/lib/certificate.server";
+import { isEventCompleted } from "@/lib/event-config";
 
 // ---------------- Public: participant status + auto-issue ----------------
-// Eligibility = attendance (physical check-in) per the event's rules.
-// Certificate is auto-issued immediately when eligible.
+// Universal Eligibility Rule:
+// Certificate eligibility = REGISTERED PARTICIPANT + EVENT COMPLETED.
+// Physical attendance / check-in is NOT required.
+// Certificate is auto-issued immediately once the event is completed.
 export const certificateStatus = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
@@ -26,20 +31,79 @@ export const certificateStatus = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const event = await loadCertificateEvent(data.district_slug);
-    if (!event) return { ok: false as const, error: "No active event." };
-    const cert = event.config.certificate;
+    let event: ActiveEvent | null = null;
+    let reg: { registration_number: string; full_name: string; mobile: string; event_id: string } | null = null;
 
-    // Strict per-event scope (H-1): reject legacy rows with NULL event_id.
-    const { data: reg } = await supabaseAdmin
-      .from("registrations")
-      .select("registration_number, full_name, mobile, event_id")
-      .eq("mobile", data.mobile)
-      .eq("event_id", event.id)
-      .maybeSingle();
-    if (!reg) {
-      return { ok: false as const, error: "No registration found for this mobile number." };
+    if (data.district_slug) {
+      event = await loadCertificateEvent(data.district_slug);
+      if (!event) return { ok: false as const, error: "Event not found." };
+
+      const { data: regRow } = await supabaseAdmin
+        .from("registrations")
+        .select("registration_number, full_name, mobile, event_id")
+        .eq("mobile", data.mobile)
+        .eq("event_id", event.id)
+        .maybeSingle();
+
+      if (!regRow) {
+        return { ok: false as const, error: "No registration found for this mobile number in this event." };
+      }
+      reg = regRow;
+    } else {
+      // Global /certificate route without district slug:
+      // Find all registrations for this mobile number.
+      const { data: regRows } = await supabaseAdmin
+        .from("registrations")
+        .select("registration_number, full_name, mobile, event_id, created_at")
+        .eq("mobile", data.mobile)
+        .order("created_at", { ascending: false });
+
+      if (!regRows || regRows.length === 0) {
+        return { ok: false as const, error: "No registration found for this mobile number." };
+      }
+
+      // If user registered for multiple events, prioritize completed events (e.g. Patan)
+      let resolvedPair: { event: ActiveEvent; reg: typeof regRows[0] } | null = null;
+      for (const r of regRows) {
+        if (!r.event_id) continue;
+        const ev = await loadEventById(r.event_id);
+        if (ev) {
+          const isComp = isEventCompleted({
+            general: ev.config.general,
+            event_date: ev.event_date ?? ev.config.general.event_date,
+            lifecycle_status: ev.lifecycle_status,
+            status: ev.status,
+          });
+          if (isComp) {
+            resolvedPair = { event: ev, reg: r };
+            break;
+          }
+          if (!resolvedPair) {
+            resolvedPair = { event: ev, reg: r };
+          }
+        }
+      }
+
+      if (!resolvedPair) {
+        // Fall back to active event
+        event = await loadCertificateEvent();
+        if (!event) return { ok: false as const, error: "No active event found." };
+        const match = regRows.find((r) => r.event_id === event?.id);
+        if (!match) {
+          return { ok: false as const, error: "No registration found for this active event." };
+        }
+        reg = match;
+      } else {
+        event = resolvedPair.event;
+        reg = resolvedPair.reg;
+      }
     }
+
+    if (!event || !reg) {
+      return { ok: false as const, error: "Registration or event not found." };
+    }
+
+    const cert = event.config.certificate;
 
     const { data: existing } = await supabaseAdmin
       .from("certificate_issues")
@@ -48,29 +112,20 @@ export const certificateStatus = createServerFn({ method: "POST" })
       .eq("event_id", event.id)
       .maybeSingle();
 
-    // Certificate eligibility = attendance (physical check-in), per event
-    // rules. A participant who registered but never checked in is NOT
-    // eligible. When attendance enforcement is on, require the configured
-    // minimum check-in count (default 1 for single-day shibirs).
-    const { count } = await supabaseAdmin
-      .from("attendance")
-      .select("id", { count: "exact", head: true })
-      .eq("registration_number", reg.registration_number)
-      .eq("event_id", event.id);
-    const checkIns = count ?? 0;
-    const attCfg = (event.config.attendance ?? {}) as {
-      enable_tracking?: boolean;
-      min_percent?: number;
-    };
-    const attendanceRequired = attCfg.enable_tracking !== false && cert.attendance_required !== false;
-    const minCheckIns = Math.max(1, attCfg.min_percent && attCfg.min_percent <= 10 ? attCfg.min_percent : 1);
-    const joined = checkIns > 0;
-    const eligible = cert.enabled && (!attendanceRequired || checkIns >= minCheckIns);
+    // Universal Eligibility: REGISTERED PARTICIPANT + EVENT COMPLETED
+    // Attendance / check-in is NOT required.
+    const completed = isEventCompleted({
+      general: event.config.general,
+      event_date: event.event_date ?? event.config.general.event_date,
+      lifecycle_status: event.lifecycle_status,
+      status: event.status,
+    });
 
+    const eligible = completed;
     let issue = existing;
 
     // Auto-issue on first eligible lookup.
-    if (!issue && cert.enabled && eligible) {
+    if (!issue && eligible) {
       const number = await nextCertNumber(cert.number_format);
       const { data: created } = await supabaseAdmin
         .from("certificate_issues")
@@ -95,9 +150,10 @@ export const certificateStatus = createServerFn({ method: "POST" })
       participant_name: reg.full_name,
       registration_number: reg.registration_number,
       event_title: event.config.general.title,
-      joined,
+      event_completed: completed,
+      joined: true,
       eligible,
-      certificate_enabled: cert.enabled,
+      certificate_enabled: true,
       issue: issue
         ? {
             certificate_number: (issue as { certificate_number: string }).certificate_number,
