@@ -167,9 +167,11 @@ export function EventOperatorScannerView({
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
   const streamTrackRef = useRef<MediaStreamTrack | null>(null);
+  const animFrameRef = useRef<number | null>(null);
   const isProcessingRef = useRef(false);
   const lastScannedTokenRef = useRef<{ token: string; time: number } | null>(null);
   const autoResumeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [scannerEngine, setScannerEngine] = useState<"auto" | "BarcodeDetector" | "ZXing">("auto");
 
   // Check operator session
   const verifyAuth = useCallback(async () => {
@@ -194,6 +196,7 @@ export function EventOperatorScannerView({
   // Clean up camera on unmount
   useEffect(() => {
     return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       controlsRef.current?.stop();
       if (autoResumeTimerRef.current) clearTimeout(autoResumeTimerRef.current);
     };
@@ -207,7 +210,7 @@ export function EventOperatorScannerView({
     isProcessingRef.current = false;
   }, []);
 
-  // Hands-free fast auto-resume (~1.0s on success, ~1.4s on duplicate/error)
+  // Hands-free fast auto-resume (~0.7s on success, ~1.1s on duplicate/error)
   useEffect(() => {
     if (!result) {
       setAutoResumeSeconds(null);
@@ -215,7 +218,7 @@ export function EventOperatorScannerView({
       return;
     }
 
-    const duration = result.state === "success" ? 1.0 : 1.4;
+    const duration = result.state === "success" ? 0.7 : 1.1;
     setAutoResumeSeconds(duration);
 
     const timer = setTimeout(() => {
@@ -232,11 +235,11 @@ export function EventOperatorScannerView({
       if (isProcessingRef.current) return;
       const now = Date.now();
 
-      // Guard: prevent immediate repeat scan within 1.5 seconds for the exact same token
+      // Guard: prevent immediate repeat scan within 1.2 seconds for the exact same token
       if (
         lastScannedTokenRef.current &&
         lastScannedTokenRef.current.token === token &&
-        now - lastScannedTokenRef.current.time < 1500
+        now - lastScannedTokenRef.current.time < 1200
       ) {
         return;
       }
@@ -303,11 +306,15 @@ export function EventOperatorScannerView({
     [checkInFn, session?.event_id, soundEnabled, targetEventId],
   );
 
-  // Start continuous camera stream
+  // Start continuous camera stream (Dual Engine: Native BarcodeDetector + ZXing fallback)
   const startCamera = useCallback(async () => {
     if (!videoRef.current) return;
     setBusy(true);
 
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
     if (controlsRef.current) {
       try {
         controlsRef.current.stop();
@@ -315,52 +322,134 @@ export function EventOperatorScannerView({
       controlsRef.current = null;
     }
 
-    try {
-      const { BrowserQRCodeReader } = await import("@zxing/browser");
-      const reader = new BrowserQRCodeReader(undefined, {
-        delayBetweenScanAttempts: 40,
-      });
+    let usedNative = false;
 
-      controlsRef.current = await reader.decodeFromConstraints(
-        {
-          video: {
-            facingMode: { ideal: facingMode },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        },
-        videoRef.current,
-        (decoded) => {
-          if (decoded && !isProcessingRef.current) {
-            void processToken(decoded.getText());
-          }
-        },
-      );
-
-      // Check torch support
+    // 1. Try Native BarcodeDetector when supported by browser
+    if (typeof window !== "undefined" && "BarcodeDetector" in window) {
       try {
-        const stream = videoRef.current.srcObject as MediaStream | null;
-        const track = stream?.getVideoTracks()[0];
-        if (track) {
-          streamTrackRef.current = track;
-          const capabilities = (track.getCapabilities?.() as any) || {};
-          setTorchSupported(Boolean(capabilities.torch));
-        }
-      } catch {}
+        const formats: string[] = await (window as any).BarcodeDetector.getSupportedFormats().catch(() => []);
+        if (formats.includes("qr_code")) {
+          const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: facingMode },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              advanced: [{ focusMode: "continuous" } as any],
+            },
+            audio: false,
+          });
 
-      setIsCameraActive(true);
-      scanNext();
-    } catch {
-      setIsCameraActive(false);
-      setResult({
-        state: "error",
-        error:
-          "કેમેરા ઍક્સેસ મેળવી શકાયો નથી. કૃપા કરીને બ્રાઉઝરમાં કેમેરાની પરવાનગી આપો અથવા નીચેથી 'મેન્યુઅલ હાજરી' નો ઉપયોગ કરો.",
-      });
-    } finally {
-      setBusy(false);
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            await videoRef.current.play().catch(() => {});
+
+            const track = stream.getVideoTracks()[0];
+            if (track) {
+              streamTrackRef.current = track;
+              const capabilities = (track.getCapabilities?.() as any) || {};
+              setTorchSupported(Boolean(capabilities.torch));
+            }
+
+            let activeLoop = true;
+            const detectLoop = async () => {
+              if (!activeLoop) return;
+              if (
+                videoRef.current &&
+                videoRef.current.readyState >= 2 &&
+                !isProcessingRef.current
+              ) {
+                try {
+                  const barcodes = await detector.detect(videoRef.current);
+                  if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                    void processToken(barcodes[0].rawValue);
+                  }
+                } catch {
+                  // Ignore per-frame decode non-matches
+                }
+              }
+              if (activeLoop) {
+                animFrameRef.current = requestAnimationFrame(detectLoop);
+              }
+            };
+            animFrameRef.current = requestAnimationFrame(detectLoop);
+
+            controlsRef.current = {
+              stop: () => {
+                activeLoop = false;
+                if (animFrameRef.current) {
+                  cancelAnimationFrame(animFrameRef.current);
+                  animFrameRef.current = null;
+                }
+                stream.getTracks().forEach((t) => t.stop());
+                if (videoRef.current) {
+                  videoRef.current.srcObject = null;
+                }
+              },
+            };
+            usedNative = true;
+            setScannerEngine("BarcodeDetector");
+          }
+        }
+      } catch (nativeErr) {
+        console.warn("BarcodeDetector initialization failed, falling back to ZXing:", nativeErr);
+        usedNative = false;
+      }
     }
+
+    // 2. Fallback to ZXing BrowserQRCodeReader with continuous focus constraints
+    if (!usedNative) {
+      try {
+        const { BrowserQRCodeReader } = await import("@zxing/browser");
+        const reader = new BrowserQRCodeReader(undefined, {
+          delayBetweenScanAttempts: 25,
+        });
+
+        controlsRef.current = await reader.decodeFromConstraints(
+          {
+            video: {
+              facingMode: { ideal: facingMode },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              advanced: [{ focusMode: "continuous" } as any],
+            },
+            audio: false,
+          },
+          videoRef.current,
+          (decoded) => {
+            if (decoded && !isProcessingRef.current) {
+              void processToken(decoded.getText());
+            }
+          },
+        );
+
+        // Check torch support on the ZXing stream
+        try {
+          const stream = videoRef.current.srcObject as MediaStream | null;
+          const track = stream?.getVideoTracks()[0];
+          if (track) {
+            streamTrackRef.current = track;
+            const capabilities = (track.getCapabilities?.() as any) || {};
+            setTorchSupported(Boolean(capabilities.torch));
+          }
+        } catch {}
+
+        setScannerEngine("ZXing");
+      } catch {
+        setIsCameraActive(false);
+        setResult({
+          state: "error",
+          error:
+            "કેમેરા ઍક્સેસ મેળવી શકાયો નથી. કૃપા કરીને બ્રાઉઝરમાં કેમેરાની પરવાનગી આપો અથવા નીચેથી 'મેન્યુઅલ હાજરી' નો ઉપયોગ કરો.",
+        });
+        setBusy(false);
+        return;
+      }
+    }
+
+    setIsCameraActive(true);
+    scanNext();
+    setBusy(false);
   }, [facingMode, processToken, scanNext]);
 
   // Auto-start camera when authenticated
@@ -371,6 +460,10 @@ export function EventOperatorScannerView({
   }, [session?.authed, isCameraActive, startCamera]);
 
   const stopCamera = useCallback(() => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
     if (controlsRef.current) {
       try {
         controlsRef.current.stop();

@@ -145,6 +145,33 @@ export const certificateStatus = createServerFn({ method: "POST" })
       issue = created ?? null;
     }
 
+    let render_payload: {
+      ok: true;
+      participant_name: string;
+      registration_number: string;
+      certificate_number: string;
+      issued_at: string | null;
+      general: typeof event.config.general;
+      certificate: typeof event.config.certificate;
+      template: typeof event.config.certificate.templates[number];
+    } | null = null;
+
+    if (eligible && issue && ((issue as { status: string }).status === "issued" || (issue as { status: string }).status === "approved")) {
+      const template =
+        cert.templates.find((t) => t.id === ((issue as { template_id?: string | null }).template_id ?? cert.active_template_id)) ??
+        cert.templates[0];
+      render_payload = {
+        ok: true as const,
+        participant_name: reg.full_name,
+        registration_number: reg.registration_number,
+        certificate_number: (issue as { certificate_number: string }).certificate_number,
+        issued_at: (issue as { issued_at: string | null }).issued_at,
+        general: event.config.general,
+        certificate: event.config.certificate,
+        template,
+      };
+    }
+
     return {
       ok: true as const,
       participant_name: reg.full_name,
@@ -161,6 +188,7 @@ export const certificateStatus = createServerFn({ method: "POST" })
             issued_at: (issue as { issued_at: string | null }).issued_at,
           }
         : null,
+      render_payload,
     };
   });
 

@@ -22,12 +22,157 @@ type StatusResult =
       eligible: boolean;
       certificate_enabled: boolean;
       issue: { certificate_number: string; status: string; issued_at: string | null } | null;
+      render_payload?: {
+        participant_name: string;
+        registration_number: string;
+        certificate_number: string;
+        issued_at: string | null;
+        general: any;
+        certificate: any;
+        template: any;
+      } | null;
     }
   | { ok: false; error: string };
 
 export type CertificateViewProps = {
   eventSlug?: string;
 };
+
+function formatDate(dateISO: string | null): string {
+  if (!dateISO) return "";
+  const d = new Date(dateISO.length <= 10 ? dateISO + "T00:00:00" : dateISO);
+  if (isNaN(d.getTime())) return dateISO;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+}
+
+const TEXT_ELEMENT_TYPES = new Set([
+  "participant_name",
+  "registration_number",
+  "certificate_number",
+  "event_title",
+  "event_theme",
+  "event_date",
+  "issue_date",
+  "organization_name",
+  "custom_text",
+]);
+
+function valueForElement(el: any, data: CertificateRenderData): string {
+  switch (el.type) {
+    case "participant_name": return data.participant_name;
+    case "registration_number": return data.registration_number;
+    case "certificate_number": return data.certificate_number;
+    case "event_title": return data.general.title;
+    case "event_theme": return data.general.theme;
+    case "event_date": return formatDate(data.general.event_date);
+    case "issue_date": return formatDate(data.issued_at ?? new Date().toISOString());
+    case "organization_name": return data.certificate.organization_name;
+    case "custom_text": return el.text ?? "";
+    default: return "";
+  }
+}
+
+async function renderCertificateCanvas(data: CertificateRenderData): Promise<string> {
+  const { template } = data;
+
+  // 1. Wait for document fonts and explicit font loads
+  if (typeof document !== "undefined" && "fonts" in document) {
+    await document.fonts.ready;
+    for (const el of template.elements) {
+      if (el.enabled && el.font_family) {
+        try {
+          await document.fonts.load(`${el.font_weight || "400"} 24px "${el.font_family}"`);
+        } catch {
+          // ignore local or non-standard fonts
+        }
+      }
+    }
+    await document.fonts.ready;
+  }
+
+  // 2. Load background image and await decode
+  let bgImg: HTMLImageElement | null = null;
+  if (template.background_url) {
+    bgImg = new Image();
+    bgImg.crossOrigin = "anonymous";
+    await new Promise<void>((resolve, reject) => {
+      if (!bgImg) return resolve();
+      bgImg.onload = () => resolve();
+      bgImg.onerror = () => reject(new Error("Background image could not be loaded."));
+      bgImg.src = template.background_url;
+      if (bgImg.complete) resolve();
+    });
+    if ("decode" in bgImg) {
+      await bgImg.decode().catch(() => {});
+    }
+  }
+
+  // 3. Setup 2x canvas for crisp print-grade resolution (2400x1696)
+  const scale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = template.canvas_width * scale;
+  canvas.height = template.canvas_height * scale;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not acquire 2D canvas context.");
+
+  // Fill base white
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw background image
+  if (bgImg && bgImg.naturalWidth > 0) {
+    ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+  }
+
+  // Draw text elements strictly following template layout
+  for (const el of template.elements) {
+    if (!el.enabled || !TEXT_ELEMENT_TYPES.has(el.type)) continue;
+    const value = valueForElement(el, data);
+    if (!value) continue;
+
+    const centerX = (el.x / 100) * canvas.width;
+    const centerY = (el.y / 100) * canvas.height;
+    const elWidth = (el.width / 100) * canvas.width;
+    const fontSize = (el.font_size || 36) * scale;
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    if (el.rotation) {
+      ctx.rotate((el.rotation * Math.PI) / 180);
+    }
+    ctx.globalAlpha = typeof el.opacity === "number" ? el.opacity : 1;
+    ctx.fillStyle = el.color || "#0f172a";
+    ctx.font = `${el.font_weight || "400"} ${fontSize}px ${el.font_family || "Noto Sans, sans-serif"}`;
+    ctx.textBaseline = "middle";
+
+    if (el.letter_spacing && "letterSpacing" in ctx) {
+      (ctx as any).letterSpacing = `${el.letter_spacing * scale}px`;
+    }
+
+    let drawX = 0;
+    if (el.align === "left") {
+      ctx.textAlign = "left";
+      drawX = -elWidth / 2;
+    } else if (el.align === "right") {
+      ctx.textAlign = "right";
+      drawX = elWidth / 2;
+    } else {
+      ctx.textAlign = "center";
+      drawX = 0;
+    }
+
+    const lines = value.split("\n");
+    const lineHeightPx = fontSize * (el.line_height || 1.2);
+    const startY = -((lines.length - 1) * lineHeightPx) / 2;
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], drawX, startY + i * lineHeightPx);
+    }
+
+    ctx.restore();
+  }
+
+  return canvas.toDataURL("image/jpeg", 0.90);
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -97,16 +242,53 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
   const [status, setStatus] = useState<StatusResult | null>(null);
   const [render, setRender] = useState<CertificateRenderData | null>(null);
   const [rendering, setRendering] = useState(false);
+  const cachedJpegRef = useRef<string | null>(null);
 
   const lookup = useServerFn(certificateStatus);
   const loadRender = useServerFn(getCertificateRenderData);
   const certRef = useRef<HTMLDivElement>(null);
 
+  // Clear cached raster when certificate changes
+  useEffect(() => {
+    cachedJpegRef.current = null;
+  }, [render?.certificate_number]);
+
+  async function warmCertificateAssets(data: CertificateRenderData) {
+    try {
+      const jpeg = await renderCertificateCanvas(data);
+      cachedJpegRef.current = jpeg;
+    } catch {
+      // Ignore background warming errors; on-demand generator will handle
+    }
+  }
+
+  async function getCertificateJpeg(): Promise<string | null> {
+    if (cachedJpegRef.current) return cachedJpegRef.current;
+    if (!render) return null;
+    try {
+      const dataUrl = await renderCertificateCanvas(render);
+      cachedJpegRef.current = dataUrl;
+      return dataUrl;
+    } catch (canvasErr) {
+      console.warn("Direct canvas render failed, falling back to html-to-image:", canvasErr);
+      if (!certRef.current) return null;
+      const { toJpeg } = await import("html-to-image");
+      const fallbackUrl = await toJpeg(certRef.current, {
+        pixelRatio: 2,
+        cacheBust: true,
+        backgroundColor: "#ffffff",
+        quality: 0.9,
+      });
+      cachedJpegRef.current = fallbackUrl;
+      return fallbackUrl;
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const mob = mobile.replace(/\D/g, "");
     if (!/^[6-9]\d{9}$/.test(mob)) { toast.error("Enter a valid 10-digit mobile number."); return; }
-    setLoading(true); setStatus(null); setRender(null);
+    setLoading(true); setStatus(null); setRender(null); cachedJpegRef.current = null;
     try {
       const res = (await withTimeout(
         lookup({ data: { mobile: mob, district_slug: eventSlug } }) as Promise<StatusResult>,
@@ -115,31 +297,51 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
       )) as StatusResult;
       setStatus(res);
       if (res.ok && res.issue && (res.issue.status === "issued" || res.issue.status === "approved")) {
-        setRendering(true);
-        try {
-          const r = await withTimeout(
-            loadRender({ data: { certificate_number: res.issue.certificate_number } }),
-            CERTIFICATE_RENDER_TIMEOUT_MS,
-            "Certificate preview took too long. Please try again.",
-          );
-          if (r.ok) {
-            setRender({
-              participant_name: r.participant_name,
-              registration_number: r.registration_number,
-              certificate_number: r.certificate_number,
-              issued_at: r.issued_at,
-              general: r.general,
-              certificate: r.certificate,
-              template: r.template,
-              verifyUrl: `${window.location.origin}/verify/${r.certificate_number}`,
-            });
-          } else {
-            toast.error(r.error || "Certificate preview is not available.");
+        // Fast-path: single-roundtrip render_payload returned directly from certificateStatus
+        if (res.render_payload) {
+          const r = res.render_payload;
+          const renderData: CertificateRenderData = {
+            participant_name: r.participant_name,
+            registration_number: r.registration_number,
+            certificate_number: r.certificate_number,
+            issued_at: r.issued_at,
+            general: r.general,
+            certificate: r.certificate,
+            template: r.template,
+            verifyUrl: `${window.location.origin}/verify/${r.certificate_number}`,
+          };
+          setRender(renderData);
+          void warmCertificateAssets(renderData);
+        } else {
+          // Secondary fallback roundtrip if render_payload is not provided
+          setRendering(true);
+          try {
+            const r = await withTimeout(
+              loadRender({ data: { certificate_number: res.issue.certificate_number } }),
+              CERTIFICATE_RENDER_TIMEOUT_MS,
+              "Certificate preview took too long. Please try again.",
+            );
+            if (r.ok) {
+              const renderData: CertificateRenderData = {
+                participant_name: r.participant_name,
+                registration_number: r.registration_number,
+                certificate_number: r.certificate_number,
+                issued_at: r.issued_at,
+                general: r.general,
+                certificate: r.certificate,
+                template: r.template,
+                verifyUrl: `${window.location.origin}/verify/${r.certificate_number}`,
+              };
+              setRender(renderData);
+              void warmCertificateAssets(renderData);
+            } else {
+              toast.error(r.error || "Certificate preview is not available.");
+            }
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Certificate preview failed.");
+          } finally {
+            setRendering(false);
           }
-        } catch (err) {
-          toast.error(err instanceof Error ? err.message : "Certificate preview failed.");
-        } finally {
-          setRendering(false);
         }
       }
     } catch (err) {
@@ -152,24 +354,10 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
     }
   }
 
-  // High-quality JPEG instead of lossless PNG: a photographic background
-  // rasterized at 2x canvas makes PNGs (and PNG-embedded PDFs) ~10-17 MB.
-  // JPEG at q0.9 keeps text sharp while cutting the file by ~95%.
-  async function generateJpeg(): Promise<string | null> {
-    if (!certRef.current) return null;
-    const { toJpeg } = await import("html-to-image");
-    return toJpeg(certRef.current, {
-      pixelRatio: 2,
-      cacheBust: true,
-      backgroundColor: "#ffffff",
-      quality: 0.9,
-    });
-  }
-
   async function downloadPdf() {
     if (!render) return;
     try {
-      const dataUrl = await generateJpeg();
+      const dataUrl = await getCertificateJpeg();
       if (!dataUrl) return;
       const { default: JsPDF } = await import("jspdf");
       const w = render.template.canvas_width;
@@ -179,8 +367,6 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
         unit: "px",
         format: [w, h],
       });
-      // Embed the JPEG as-is (jsPDF does not recompress it), so the PDF is
-      // roughly the size of the JPEG instead of a multi-megabyte PNG raster.
       pdf.addImage(dataUrl, "JPEG", 0, 0, w, h);
       pdf.save(`${render.certificate_number}.pdf`);
     } catch (err) {
@@ -189,15 +375,10 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
   }
 
   async function downloadJpg() {
-    if (!render || !certRef.current) return;
+    if (!render) return;
     try {
-      const { toJpeg } = await import("html-to-image");
-      const dataUrl = await toJpeg(certRef.current, {
-        pixelRatio: 2,
-        cacheBust: true,
-        backgroundColor: "#ffffff",
-        quality: 0.88,
-      });
+      const dataUrl = await getCertificateJpeg();
+      if (!dataUrl) return;
       const a = document.createElement("a");
       a.href = dataUrl;
       a.download = `${render.certificate_number}.jpg`;

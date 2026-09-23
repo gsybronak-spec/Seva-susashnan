@@ -61,7 +61,7 @@ export function EventIdCard({
         if (result.ok && result.qr_token) {
           const qrDataUrl = await QRCode.toDataURL(result.qr_token, {
             width: 900,
-            margin: 2,
+            margin: 1,
             errorCorrectionLevel: "M",
             color: {
               dark: "#000000",
@@ -291,29 +291,29 @@ export function EventIdCard({
 
     // 6. Right Column: Event Check-in QR Code Panel (High-Resolution & Larger QR Area)
     ctx.fillStyle = "#FDFBF7";
-    ctx.fillRect(760, 210, 380, 382);
+    ctx.fillRect(760, 204, 380, 396);
     ctx.strokeStyle = "#E8E0D5";
     ctx.lineWidth = 1.5;
-    ctx.strokeRect(760, 210, 380, 382);
+    ctx.strokeRect(760, 204, 380, 396);
 
     const effectiveQr =
       qrSrc ||
       (card.qr_token
         ? await QRCode.toDataURL(card.qr_token, {
             width: 900,
-            margin: 2,
+            margin: 1,
             errorCorrectionLevel: "M",
             color: { dark: "#000000", light: "#FFFFFF" },
           })
         : "");
 
     if (effectiveQr) {
-      // White quiet-zone backing box (330x330px centered horizontally in panel)
+      // White quiet-zone backing box (350x350px centered horizontally in panel)
       ctx.fillStyle = "#FFFFFF";
-      ctx.fillRect(785, 222, 330, 330);
+      ctx.fillRect(775, 212, 350, 350);
       ctx.strokeStyle = "#E8E0D5";
       ctx.lineWidth = 1;
-      ctx.strokeRect(785, 222, 330, 330);
+      ctx.strokeRect(775, 212, 350, 350);
 
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -322,8 +322,8 @@ export function EventIdCard({
         const done = () => {
           if (loaded) return;
           loaded = true;
-          // Render QR at 310x310px centered perfectly inside 330x330px quiet zone
-          ctx.drawImage(img, 795, 232, 310, 310);
+          // Render QR enlarged to 340x340px centered inside 350x350px quiet zone
+          ctx.drawImage(img, 780, 217, 340, 340);
           resolve();
         };
         img.onload = done;
@@ -338,10 +338,10 @@ export function EventIdCard({
       ctx.fillStyle = "#0F3E3E";
       ctx.font = "bold 14px 'Noto Sans Gujarati', 'Noto Sans', sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("પ્રવેશ માટે આ QR કોડ સ્કેન કરાવો", 950, 568);
+      ctx.fillText("પ્રવેશ માટે આ QR કોડ સ્કેન કરાવો", 950, 576);
       ctx.fillStyle = "#64748B";
       ctx.font = "11px 'Noto Sans', sans-serif";
-      ctx.fillText("Official Digital Check-in Pass", 950, 584);
+      ctx.fillText("Official Digital Check-in Pass", 950, 592);
       ctx.textAlign = "start";
     }
 
@@ -659,17 +659,17 @@ export function EventIdCard({
 
             {/* QR Code Panel */}
             <div className="md:col-span-5 flex flex-col items-center justify-center">
-              <div className="w-full max-w-[280px] sm:max-w-[300px] md:max-w-[260px] lg:max-w-[280px] p-3.5 sm:p-4 rounded-2xl bg-[#FAF8F5] border-2 border-[#0F3E3E]/20 shadow-xs flex flex-col items-center justify-center">
+              <div className="w-full max-w-[320px] sm:max-w-[340px] md:max-w-[290px] lg:max-w-[330px] p-3 sm:p-4 rounded-2xl bg-[#FAF8F5] border-2 border-[#0F3E3E]/20 shadow-xs flex flex-col items-center justify-center">
                 <div className="p-2 sm:p-2.5 bg-white rounded-xl border border-[#E8E0D5] shadow-xs flex items-center justify-center w-full aspect-square">
                   {qr ? (
                     <img
                       src={qr}
                       alt="Official Check-in QR Code"
-                      className="w-56 h-56 sm:w-64 sm:h-64 md:w-56 md:h-56 lg:w-64 lg:h-64 object-contain rounded-lg"
+                      className="w-64 h-64 sm:w-72 sm:h-72 md:w-60 md:h-60 lg:w-72 lg:h-72 max-w-full aspect-square object-contain rounded-lg"
                       style={{ imageRendering: "pixelated" }}
                     />
                   ) : (
-                    <div className="w-56 h-56 sm:w-64 sm:h-64 md:w-56 md:h-56 lg:w-64 lg:h-64 flex items-center justify-center bg-stone-50 rounded-lg">
+                    <div className="w-64 h-64 sm:w-72 sm:h-72 md:w-60 md:h-60 lg:w-72 lg:h-72 max-w-full aspect-square flex items-center justify-center bg-stone-50 rounded-lg">
                       <Loader2 className="w-8 h-8 animate-spin text-stone-400" />
                     </div>
                   )}
