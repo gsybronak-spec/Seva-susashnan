@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
 import { copyEventConfigSections, copySection } from "@/lib/event-clone";
-import { mergeCoverage, type EventCoverage } from "@/lib/event-config";
+import { mergeCoverage, sortAdminEventsChronological, type EventCoverage } from "@/lib/event-config";
 
 
 
@@ -122,47 +122,49 @@ export const adminListEvents = createServerFn({ method: "GET" })  .handler(async
       for (const d of ds ?? []) nameById.set(d.id as string, d.name as string);
     }
 
+    const mappedRows = rowsAll.map((w) => {
+      const general = (w.general ?? {}) as Record<string, unknown>;
+      const effDate = (general.event_date as string | null | undefined) ?? (w.event_date as string | null | undefined) ?? null;
+      const effVenue = (w.venue as string | null | undefined) ?? (general.venue as string | null | undefined) ?? null;
+      const effStartTime = (general.start_time as string | null | undefined) ?? (typeof w.event_time === "string" && w.event_time ? w.event_time.slice(0, 5) : null);
+      const effEndTime = (general.end_time as string | null | undefined) ?? null;
+      const mergedGeneral = {
+        ...general,
+        event_date: effDate,
+        venue: effVenue,
+        start_time: effStartTime,
+        end_time: effEndTime,
+      };
+      const c = mergeCoverage(general.coverage, (w.district_id as string | null) ?? null);
+      let names: string[] = [];
+      if (c.type === "single") {
+        const dName =
+          typeof w.district_id === "string" ? nameById.get(w.district_id) : undefined;
+        names = dName
+          ? [dName]
+          : typeof w.district === "string" && w.district
+            ? [w.district]
+            : [];
+      } else if (c.type === "zone") {
+        names = (c.district_ids ?? [])
+          .map((id) => nameById.get(id))
+          .filter((v): v is string => !!v);
+      } else {
+        names = ["All Districts"];
+      }
+      return {
+        ...w,
+        venue: effVenue,
+        coverage_type: c.type,
+        coverage_district_names: names,
+        general: mergedGeneral as { title?: string; subtitle?: string; event_date?: string | null; end_date?: string | null; start_time?: string | null; end_time?: string | null; registration_open_at?: string | null; registration_close_at?: string | null },
+        registration_count: countById.get(w.id as string) ?? 0,
+      };
+    });
+
     return {
       ok: true as const,
-      rows: rowsAll.map((w) => {
-        const general = (w.general ?? {}) as Record<string, unknown>;
-        const effDate = (general.event_date as string | null | undefined) ?? (w.event_date as string | null | undefined) ?? null;
-        const effVenue = (w.venue as string | null | undefined) ?? (general.venue as string | null | undefined) ?? null;
-        const effStartTime = (general.start_time as string | null | undefined) ?? (typeof w.event_time === "string" && w.event_time ? w.event_time.slice(0, 5) : null);
-        const effEndTime = (general.end_time as string | null | undefined) ?? null;
-        const mergedGeneral = {
-          ...general,
-          event_date: effDate,
-          venue: effVenue,
-          start_time: effStartTime,
-          end_time: effEndTime,
-        };
-        const c = mergeCoverage(general.coverage, (w.district_id as string | null) ?? null);
-        let names: string[] = [];
-        if (c.type === "single") {
-          const dName =
-            typeof w.district_id === "string" ? nameById.get(w.district_id) : undefined;
-          names = dName
-            ? [dName]
-            : typeof w.district === "string" && w.district
-              ? [w.district]
-              : [];
-        } else if (c.type === "zone") {
-          names = (c.district_ids ?? [])
-            .map((id) => nameById.get(id))
-            .filter((v): v is string => !!v);
-        } else {
-          names = ["All Districts"];
-        }
-        return {
-          ...w,
-          venue: effVenue,
-          coverage_type: c.type,
-          coverage_district_names: names,
-          general: mergedGeneral as { title?: string; subtitle?: string; event_date?: string | null; end_date?: string | null; start_time?: string | null; end_time?: string | null; registration_open_at?: string | null; registration_close_at?: string | null },
-          registration_count: countById.get(w.id as string) ?? 0,
-        };
-      }),
+      rows: sortAdminEventsChronological(mappedRows),
     };
   });
 

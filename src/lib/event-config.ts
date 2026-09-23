@@ -962,3 +962,204 @@ export function isEventCompleted(event: {
   return Date.now() >= endMs;
 }
 
+export type SortableAdminEvent = {
+  id?: string;
+  slug?: string | null;
+  event_date?: string | null;
+  event_time?: string | null;
+  venue?: string | null;
+  lifecycle_status?: string | null;
+  status?: Partial<EventStatus> | null;
+  general?: {
+    title?: string;
+    event_date?: string | null;
+    end_date?: string | null;
+    start_time?: string | null;
+    end_time?: string | null;
+    event_time?: string | null;
+    duration_minutes?: number;
+    status?: Partial<EventStatus> | null;
+  } | null;
+  [key: string]: unknown;
+};
+
+export type EventStartInfo = {
+  dateStr: string;
+  startTimeStr: string | null;
+  hasTime: boolean;
+  startMs: number;
+};
+
+/**
+ * Resolves the start timestamp and date/time info for an event in Asia/Kolkata (+05:30).
+ * If start time is missing, resolves to the start of the day (00:00:00+05:30) for that date.
+ * Returns null if event_date cannot be determined.
+ */
+export function getEventStartInfo(event: SortableAdminEvent): EventStartInfo | null {
+  const g = event.general ?? {};
+  const dateStr = (g.event_date || event.event_date || "").trim();
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return null;
+  }
+
+  let startTimeStr = (g.start_time || "").trim();
+  let hasTime = false;
+
+  if (startTimeStr && /^\d{1,2}:\d{2}$/.test(startTimeStr)) {
+    hasTime = true;
+  } else {
+    const rawTime = (event.event_time || g.event_time || "").trim();
+    if (rawTime) {
+      if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(rawTime)) {
+        startTimeStr = rawTime.slice(0, 5);
+        hasTime = true;
+      } else {
+        const match = rawTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+        if (match) {
+          let h = parseInt(match[1], 10);
+          const m = parseInt(match[2], 10);
+          const ampm = (match[3] || "").toUpperCase();
+          if (ampm === "PM" && h < 12) h += 12;
+          if (ampm === "AM" && h === 12) h = 0;
+          startTimeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+          hasTime = true;
+        }
+      }
+    }
+  }
+
+  const [h, m] = hasTime && startTimeStr ? startTimeStr.split(":").map((v) => String(v).padStart(2, "0")) : ["00", "00"];
+  const isoWithOffset = `${dateStr}T${h}:${m}:00+05:30`;
+  const ms = Date.parse(isoWithOffset);
+  return {
+    dateStr,
+    startTimeStr: hasTime ? `${h}:${m}` : null,
+    hasTime,
+    startMs: Number.isNaN(ms) ? 0 : ms,
+  };
+}
+
+/**
+ * Resolves the effective end timestamp in milliseconds for sorting purposes in Asia/Kolkata (+05:30).
+ * If end_time cannot be explicitly resolved, falls back to the end of that day (23:59:59+05:30).
+ */
+export function getEventEffectiveEndTimestampMs(
+  event: SortableAdminEvent,
+  startInfo?: EventStartInfo | null,
+): number | null {
+  const explicitEndMs = getEventEndTimestampMs(event as any);
+  if (explicitEndMs !== null) return explicitEndMs;
+
+  const g = event.general ?? {};
+  const dateStr = (g.end_date || g.event_date || event.event_date || startInfo?.dateStr || "").trim();
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+
+  // Safe fallback to end of the day in Asia/Kolkata (+05:30) without inventing a premature time
+  const ms = Date.parse(`${dateStr}T23:59:59+05:30`);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Chronologically sort Admin Dashboard events relative to the CURRENT DATE/TIME in Asia/Kolkata (+05:30).
+ *
+ * Rules:
+ * 1. Active / In-Progress events first (now >= startMs && now < endMs, or status === 'live')
+ * 2. Upcoming events next: nearest upcoming → farthest upcoming (ascending start date/time)
+ * 3. Past / Completed events next: most recently completed → oldest completed (descending end date/time)
+ * 4. Undated events last (missing/unparseable date)
+ */
+export function sortAdminEventsChronological<T extends SortableAdminEvent>(
+  events: T[],
+  nowMs: number = Date.now(),
+): T[] {
+  type ClassifiedItem = {
+    event: T;
+    category: "in_progress" | "upcoming" | "past" | "undated";
+    startInfo: EventStartInfo | null;
+    startMs: number;
+    endMs: number;
+  };
+
+  const classified: ClassifiedItem[] = events.map((event) => {
+    const startInfo = getEventStartInfo(event);
+    if (!startInfo || startInfo.startMs === 0) {
+      return {
+        event,
+        category: "undated",
+        startInfo: null,
+        startMs: Infinity,
+        endMs: Infinity,
+      };
+    }
+
+    const endMs = getEventEffectiveEndTimestampMs(event, startInfo) ?? (startInfo.startMs + 7_200_000);
+
+    const g = event.general ?? {};
+    const lifecycle = event.lifecycle_status || (event.status as any)?.value || (g.status as any)?.value;
+    const isExplicitCompleted = lifecycle === "completed" || isEventCompleted(event as any);
+    const isExplicitLive = lifecycle === "live";
+
+    if (isExplicitCompleted || nowMs >= endMs) {
+      return {
+        event,
+        category: "past",
+        startInfo,
+        startMs: startInfo.startMs,
+        endMs,
+      };
+    }
+
+    if (isExplicitLive || (startInfo.hasTime && nowMs >= startInfo.startMs && nowMs < endMs)) {
+      return {
+        event,
+        category: "in_progress",
+        startInfo,
+        startMs: startInfo.startMs,
+        endMs,
+      };
+    }
+
+    return {
+      event,
+      category: "upcoming",
+      startInfo,
+      startMs: startInfo.startMs,
+      endMs,
+    };
+  });
+
+  const inProgress = classified.filter((c) => c.category === "in_progress");
+  const upcoming = classified.filter((c) => c.category === "upcoming");
+  const past = classified.filter((c) => c.category === "past");
+  const undated = classified.filter((c) => c.category === "undated");
+
+  // In-progress: earlier start time first
+  inProgress.sort((a, b) => a.startMs - b.startMs);
+
+  // Upcoming: nearest upcoming first (ascending start date/time)
+  upcoming.sort((a, b) => {
+    if (a.startInfo && b.startInfo) {
+      if (a.startInfo.dateStr !== b.startInfo.dateStr) {
+        return a.startInfo.dateStr.localeCompare(b.startInfo.dateStr);
+      }
+      if (a.startInfo.hasTime && b.startInfo.hasTime) {
+        return a.startMs - b.startMs;
+      }
+      if (a.startInfo.hasTime && !b.startInfo.hasTime) return -1;
+      if (!a.startInfo.hasTime && b.startInfo.hasTime) return 1;
+    } else {
+      if (a.startMs !== b.startMs) return a.startMs - b.startMs;
+    }
+    return (a.event.slug || "").localeCompare(b.event.slug || "");
+  });
+
+  // Past: most recently completed first (descending end date/time)
+  past.sort((a, b) => {
+    if (b.endMs !== a.endMs) return b.endMs - a.endMs;
+    if (b.startMs !== a.startMs) return b.startMs - a.startMs;
+    return (a.event.slug || "").localeCompare(b.event.slug || "");
+  });
+
+  return [...inProgress, ...upcoming, ...past, ...undated].map((c) => c.event);
+}
+

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
+import { sortAdminEventsChronological } from "@/lib/event-config";
 
 // Per-event Organisation list, used by the Partner form and the
 // Organisations tab in the admin. Read is allowed for any admin scoped to
@@ -188,5 +189,5 @@ export const adminEventOverview = createServerFn({ method: "GET" }).handler(asyn
       rows = rows.filter((r) => allowed.has(r.id));
     }
   }
-  return { ok: true as const, rows };
+  return { ok: true as const, rows: sortAdminEventsChronological(rows) };
 });
