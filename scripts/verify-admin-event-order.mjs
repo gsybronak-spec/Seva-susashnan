@@ -56,21 +56,23 @@ async function runVerification() {
   // Assertions
   console.log("\n--- VERIFICATION CHECKS ---");
 
-  // 1. #1 must be Kheda (today's event, starts at 06:00)
+  // 1. #1 must now be Junagadh (2026-09-26 06:00) since Kheda is postponed
   const first = sorted[0];
-  if (first.slug === "kheda-yog-shibir") {
-    console.log("  ✓ PASS: Nearest upcoming event is Kheda (2026-09-24 06:00)");
+  if (first.slug === "junagadh-yog-shibir") {
+    console.log("  ✓ PASS: Nearest upcoming event is Junagadh (2026-09-26 06:00)");
   } else {
-    console.error(`  ✗ FAIL: Expected first event to be kheda-yog-shibir, got ${first.slug}`);
+    console.error(`  ✗ FAIL: Expected first event to be junagadh-yog-shibir, got ${first.slug}`);
     process.exit(1);
   }
 
-  // 2. #2 must be Junagadh (2026-09-26 06:00)
-  const second = sorted[1];
-  if (second.slug === "junagadh-yog-shibir") {
-    console.log("  ✓ PASS: Second upcoming event is Junagadh (2026-09-26 06:00)");
+  // 2. Kheda must NOT appear in upcoming events based on the old 24 Sep date
+  const khedaIdx = sorted.findIndex(e => e.slug === "kheda-yog-shibir");
+  const junagadhIdx = sorted.findIndex(e => e.slug === "junagadh-yog-shibir");
+  const patanIdx = sorted.findIndex(e => e.slug === "patan-yog-shibir");
+  if (khedaIdx > patanIdx) {
+    console.log(`  ✓ PASS: Kheda is treated as undated/postponed (#${khedaIdx + 1}), not as an upcoming event on 24 Sep`);
   } else {
-    console.error(`  ✗ FAIL: Expected second event to be junagadh-yog-shibir, got ${second.slug}`);
+    console.error(`  ✗ FAIL: Kheda was placed at index ${khedaIdx} instead of undated/postponed position`);
     process.exit(1);
   }
 
@@ -86,7 +88,6 @@ async function runVerification() {
   }
 
   // 4. Completed events: Patan (22 Sep) must appear before Vadodara (20 Sep)
-  const patanIdx = sorted.findIndex(e => e.slug === "patan-yog-shibir");
   const vadodaraIdx = sorted.findIndex(e => e.slug === "vadodara-yog-shibir");
   if (patanIdx < vadodaraIdx) {
     console.log(`  ✓ PASS: Most recently completed event (Patan #${patanIdx + 1}, 22 Sep) appears before older completed (Vadodara #${vadodaraIdx + 1}, 20 Sep)`);
@@ -104,31 +105,31 @@ async function runVerification() {
     process.exit(1);
   }
 
-  // 6. Test In-Progress Active Event (simulate 06:30 AM on 24 Sep)
-  const inProgressTime = Date.parse("2026-09-24T06:30:00+05:30");
+  // 6. Test In-Progress Active Event (simulate 06:30 AM on 26 Sep for Junagadh)
+  const inProgressTime = Date.parse("2026-09-26T06:30:00+05:30");
   const liveSorted = sortAdminEventsChronological(events, inProgressTime);
-  if (liveSorted[0].slug === "kheda-yog-shibir") {
-    console.log("  ✓ PASS: When an event is in-progress (24 Sep 06:30 AM), it is placed at the very top of the list");
+  if (liveSorted[0].slug === "junagadh-yog-shibir") {
+    console.log("  ✓ PASS: When Junagadh is in-progress (26 Sep 06:30 AM), it is placed at the very top of the list");
   } else {
     console.error(`  ✗ FAIL: In-progress event was not at the top, got ${liveSorted[0].slug}`);
     process.exit(1);
   }
 
-  // 7. Test Completed Transition (simulate 08:30 AM on 24 Sep after Kheda completes)
-  const postKhedaTime = Date.parse("2026-09-24T08:30:00+05:30");
-  const postKhedaSorted = sortAdminEventsChronological(events, postKhedaTime);
-  if (postKhedaSorted[0].slug === "junagadh-yog-shibir") {
-    console.log("  ✓ PASS: After Kheda completes (24 Sep 08:30 AM), Junagadh automatically becomes #1 upcoming");
+  // 7. Test Completed Transition (simulate 08:30 AM on 26 Sep after Junagadh completes)
+  const postJunagadhTime = Date.parse("2026-09-26T08:30:00+05:30");
+  const postJunagadhSorted = sortAdminEventsChronological(events, postJunagadhTime);
+  if (postJunagadhSorted[0].slug === "botad-yog-shibir") {
+    console.log("  ✓ PASS: After Junagadh completes (26 Sep 08:30 AM), Botad automatically becomes #1 upcoming");
   } else {
-    console.error(`  ✗ FAIL: Junagadh was not #1 after Kheda completion, got ${postKhedaSorted[0].slug}`);
+    console.error(`  ✗ FAIL: Botad was not #1 after Junagadh completion, got ${postJunagadhSorted[0].slug}`);
     process.exit(1);
   }
-  const khedaPastIdx = postKhedaSorted.findIndex(e => e.slug === "kheda-yog-shibir");
-  const patanPastIdx = postKhedaSorted.findIndex(e => e.slug === "patan-yog-shibir");
-  if (khedaPastIdx < patanPastIdx) {
-    console.log("  ✓ PASS: Newly completed Kheda appears as the most recently completed event (before Patan)");
+  const junaPastIdx = postJunagadhSorted.findIndex(e => e.slug === "junagadh-yog-shibir");
+  const patanPastIdx = postJunagadhSorted.findIndex(e => e.slug === "patan-yog-shibir");
+  if (junaPastIdx < patanPastIdx) {
+    console.log("  ✓ PASS: Newly completed Junagadh appears as the most recently completed event (before Patan)");
   } else {
-    console.error("  ✗ FAIL: Newly completed Kheda did not appear before Patan in past events");
+    console.error("  ✗ FAIL: Newly completed Junagadh did not appear before Patan in past events");
     process.exit(1);
   }
 

@@ -744,14 +744,14 @@ export function formatShareMessage(
 }
 
 export function formatEventDate(dateISO: string | null): string {
-  if (!dateISO) return "";
+  if (!dateISO || !/^\d{4}-\d{2}-\d{2}$/.test(dateISO)) return "Yet to be Declared";
   const d = new Date(dateISO + "T00:00:00");
   if (isNaN(d.getTime())) return dateISO;
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 }
 
 export function formatTimeRange(start: string | null | undefined, end: string | null | undefined): string {
-  if (!start && !end) return "06:00 AM – 08:00 AM";
+  if (!start && !end) return "";
   const to12 = (t: string | null | undefined) => {
     if (!t) return "";
     const s = t.trim();
@@ -767,7 +767,7 @@ export function formatTimeRange(start: string | null | undefined, end: string | 
   const s12 = to12(start);
   const e12 = to12(end);
   if (s12 && e12) return `${s12} – ${e12}`;
-  return s12 || e12 || "06:00 AM – 08:00 AM";
+  return s12 || e12 || "";
 }
 
 // ---------- Certificate designer ----------

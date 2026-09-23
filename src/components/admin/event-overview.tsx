@@ -303,7 +303,7 @@ export function EventOverview({
                 <div className="text-base font-semibold text-foreground group-hover:text-brand-primary line-clamp-2">
                   {r.title || r.slug}
                 </div>
-                {r.event_date && (
+                {r.event_date && /^\d{4}-\d{2}-\d{2}$/.test(r.event_date) ? (
                   <div className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
                     <CalendarDays className="h-3 w-3" />
                     {new Date(r.event_date).toLocaleDateString("en-IN", {
@@ -311,6 +311,11 @@ export function EventOverview({
                       month: "long",
                       year: "numeric",
                     })}
+                  </div>
+                ) : (
+                  <div className="mt-1 inline-flex items-center gap-1 text-xs text-amber-700 font-medium bg-amber-50 px-2 py-0.5 rounded-md">
+                    <CalendarDays className="h-3 w-3" />
+                    Yet to be Declared
                   </div>
                 )}
                 <div className="mt-4 grid w-full grid-cols-2 gap-2 text-xs">

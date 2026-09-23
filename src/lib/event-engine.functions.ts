@@ -302,20 +302,20 @@ export const getEventIdCard = createServerFn({ method: "POST" })
 
     const eventTitle = (general.title as string) || "ગુજરાત રાજ્ય યોગ બોર્ડ યોગ શિબિર";
     const rawDate = eventRow?.event_date || (general.event_date as string);
-    const eventDate = rawDate
+    const eventDate = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
       ? new Date(rawDate + (rawDate.length === 10 ? "T00:00:00" : "")).toLocaleDateString("en-IN", {
           day: "numeric",
           month: "long",
           year: "numeric",
         })
-      : "";
+      : "Yet to be Declared";
     const eventTime =
       (general.start_time && general.end_time
         ? `${general.start_time} – ${general.end_time}`
         : null) ||
-      eventRow?.event_time ||
+      (eventRow?.event_time && !eventRow.event_time.includes("00:00:00") ? eventRow.event_time : null) ||
       (general.event_time as string) ||
-      "";
+      "Yet to be Declared";
     const venue = eventRow?.venue || (general.venue as string) || (general.venue_address as string) || "";
 
     const participantType = String(cf.participant_type || registration.designation || "").trim();

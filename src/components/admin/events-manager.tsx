@@ -1198,7 +1198,7 @@ export function EventsManager({
                   </div>
                 </td>
                 <td className="p-3 text-xs">
-                  {formatDateShort(w.general?.event_date)}
+                  {w.general?.event_date ? formatDateShort(w.general.event_date) : "Yet to be Declared"}
                   {w.general?.end_date ? ` – ${formatDateShort(w.general.end_date)}` : ""}
                 </td>
                 <td className="p-3 text-xs text-muted-foreground">
@@ -1206,7 +1206,7 @@ export function EventsManager({
                     <Clock className="h-3 w-3" />
                     {w.general?.event_time ||
                      formatTimeRange(w.general?.start_time, w.general?.end_time) ||
-                     "06:00 AM – 08:00 AM"}
+                     "Yet to be Declared"}
                   </span>
                 </td>
                 <td className="p-3 font-semibold text-brand-primary">{w.registration_count ?? 0}</td>

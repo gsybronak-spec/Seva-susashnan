@@ -72,7 +72,7 @@ type PublicEventRow = {
 };
 
 function formatEventDate(iso: string | null): string {
-  if (!iso) return "";
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "Yet to be Declared";
   const d = new Date(iso + (iso.length === 10 ? "T00:00:00" : ""));
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-IN", {
@@ -100,7 +100,7 @@ function formatEventTime(
   if (startTime) {
     return formatTimeRange(startTime, endTime);
   }
-  return "06:00 AM – 08:00 AM";
+  return "Yet to be Declared";
 }
 
 /* ============================================================
@@ -260,17 +260,21 @@ function EventsSection({
 
                     {/* Logistics Details */}
                     <div className="mt-3.5 space-y-2.5 text-xs text-muted-foreground sm:text-sm">
-                      {eventDateStr && (
-                        <div className="flex items-start gap-2.5">
-                          <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" />
-                          <span className="font-medium text-foreground">{eventDateStr}</span>
-                        </div>
-                      )}
+                      <div className="flex items-start gap-2.5">
+                        <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" />
+                        <span className="font-medium text-foreground">
+                          {eventDateStr && !eventDateStr.toLowerCase().includes("declared")
+                            ? eventDateStr
+                            : "Date: Yet to be Declared"}
+                        </span>
+                      </div>
 
                       <div className="flex items-start gap-2.5">
                         <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand-primary" />
-                        <span className={eventTimeStr ? "text-foreground font-medium" : "text-muted-foreground italic"}>
-                          {eventTimeStr || "સમય ટૂંક સમયમાં જાહેર કરવામાં આવશે"}
+                        <span className="text-foreground font-medium">
+                          {eventTimeStr && !eventTimeStr.toLowerCase().includes("declared")
+                            ? eventTimeStr
+                            : "Time: Yet to be Declared"}
                         </span>
                       </div>
 

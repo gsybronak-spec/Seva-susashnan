@@ -76,19 +76,22 @@ export function EventInfoCard({ config }: { config: EventConfig }) {
               </p>
             )}
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              {dateStr && (
-                <div className="inline-flex items-center gap-1.5 text-foreground">
-                  <CalendarDays className="h-4 w-4 text-brand-primary" />
-                  {dateStr}
-                </div>
-              )}
-              {timeStr && (
-                <div className="inline-flex items-center gap-1.5 text-foreground">
-                  <Clock className="h-4 w-4 text-brand-primary" />
-                  {timeStr}
-                  {general.duration_minutes ? ` · ${general.duration_minutes} min` : ""}
-                </div>
-              )}
+              <div className="inline-flex items-center gap-1.5 text-foreground">
+                <CalendarDays className="h-4 w-4 text-brand-primary" />
+                <span>
+                  {dateStr && !dateStr.toLowerCase().includes("declared")
+                    ? dateStr
+                    : "Date: Yet to be Declared"}
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 text-foreground">
+                <Clock className="h-4 w-4 text-brand-primary" />
+                <span>
+                  {timeStr && !timeStr.toLowerCase().includes("declared")
+                    ? `${timeStr}${general.duration_minutes ? ` · ${general.duration_minutes} min` : ""}`
+                    : "Time: Yet to be Declared"}
+                </span>
+              </div>
               {general.speaker_name && (
                 <div className="inline-flex items-center gap-1.5 text-foreground">
                   <User className="h-4 w-4 text-brand-primary" />

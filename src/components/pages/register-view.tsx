@@ -491,7 +491,7 @@ export function RegisterView({
 
   const eventTitle = config.general?.title || "ગુજરાત રાજ્ય યોગ બોર્ડ યોગ શિબિર";
   const rawDate = config.general?.event_date || (config as any)?.event_date;
-  const eventDate = rawDate
+  const eventDate = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
     ? new Date(rawDate + (rawDate.length === 10 ? "T00:00:00" : "")).toLocaleDateString("en-IN", {
         weekday: "long",
         day: "numeric",
@@ -506,7 +506,7 @@ export function RegisterView({
     config.general?.event_time ||
     (config as any)?.event_time ||
     formatTimeRange(config.general?.start_time, config.general?.end_time) ||
-    "06:00 AM – 08:00 AM";
+    "";
   const venue =
     (config.venue && config.venue.trim().length > 0 ? config.venue.trim() : null) ||
     ((config.general as any)?.venue && (config.general as any).venue.trim().length > 0 ? (config.general as any).venue.trim() : null) ||
@@ -582,11 +582,23 @@ export function RegisterView({
             <div className="pt-2 border-t border-white/15 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               <div className="flex items-center gap-2 text-emerald-100">
                 <Calendar className="w-4 h-4 text-[#F59E0B] shrink-0" />
-                <span><strong>{eventDate || "તારીખ ટૂંક સમયમાં"}</strong></span>
+                <span>
+                  <strong>
+                    {eventDate && !eventDate.toLowerCase().includes("declared")
+                      ? eventDate
+                      : "Date: Yet to be Declared"}
+                  </strong>
+                </span>
               </div>
               <div className="flex items-center gap-2 text-emerald-100">
                 <Clock className="w-4 h-4 text-[#F59E0B] shrink-0" />
-                <span>{eventTime}</span>
+                <span>
+                  <strong>
+                    {eventTime && !eventTime.toLowerCase().includes("declared")
+                      ? eventTime
+                      : "Time: Yet to be Declared"}
+                  </strong>
+                </span>
               </div>
               <div className="flex items-start gap-2 text-emerald-100 sm:col-span-2 pt-0.5">
                 <MapPin className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />

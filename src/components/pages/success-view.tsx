@@ -36,8 +36,8 @@ export function SuccessView({
   const shareText = formatShareMessage(config.referral.share_template, {
     title: config.general.title,
     theme: config.general.theme,
-    date: formatEventDate(config.general.event_date) || "TBA",
-    time: formatTimeRange(config.general.start_time, config.general.end_time) || "TBA",
+    date: formatEventDate(config.general.event_date) || "Yet to be Declared",
+    time: formatTimeRange(config.general.start_time, config.general.end_time) || "Yet to be Declared",
     link: shareUrl,
   });
 
