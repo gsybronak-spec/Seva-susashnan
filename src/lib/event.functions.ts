@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
-import { mergeCoverage, formatTimeRange } from "@/lib/event-config";
+import { mergeCoverage, formatTimeRange, getEventRegistrationStatus } from "@/lib/event-config";
 import { mergeSectionObjects } from "@/lib/config-merge";
 
 export { mergeSectionObjects };
@@ -138,13 +138,7 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
           .filter((v): v is string => !!v);
       }
 
-      const openAt = g.registration_open_at ? new Date(g.registration_open_at).getTime() : null;
-      const closeAt = g.registration_close_at ? new Date(g.registration_close_at).getTime() : null;
-      const isWindowOpen =
-        (openAt == null || !Number.isFinite(openAt) || now >= openAt) &&
-        (closeAt == null || !Number.isFinite(closeAt) || now <= closeAt);
-
-      const isRegEnabled = rec.features?.registration !== false && g.registration_mode !== "external" && isWindowOpen;
+      const regStatus = getEventRegistrationStatus(rec as any, now);
 
       return {
         id: rec.id,
@@ -162,7 +156,10 @@ export const listPublicEvents = createServerFn({ method: "GET" }).handler(async 
         coverage_district_names: names,
         district_id: rec.district_id ?? null,
         status: rec.status?.value ?? null,
-        registration_enabled: isRegEnabled,
+        registration_enabled: regStatus.isOpen,
+        registration_status: regStatus.status,
+        registration_message_gu: regStatus.messageGu,
+        registration_message_en: regStatus.messageEn,
         registration_mode: g.registration_mode || (rec.features?.registration === false ? "external" : "internal"),
         contact_mobile: g.contact_mobile || (Array.isArray(g.contact_mobiles) ? g.contact_mobiles.join(" / ") : null),
         expected_participants: g.expected_participants || rec.max_registrations || null,

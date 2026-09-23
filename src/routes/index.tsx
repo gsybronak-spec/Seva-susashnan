@@ -66,6 +66,9 @@ type PublicEventRow = {
   coverage_district_names: string[];
   status: string | null;
   registration_enabled: boolean;
+  registration_status?: "open" | "in_progress" | "completed" | "closed" | "external";
+  registration_message_gu?: string;
+  registration_message_en?: string;
   registration_mode?: string | null;
   contact_mobile?: string | null;
   expected_participants?: number | null;
@@ -245,10 +248,20 @@ function EventsSection({
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-600 animate-pulse" />
                           નોંધણી ચાલુ (Open)
                         </span>
+                      ) : e.registration_status === "completed" ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                          <Award className="h-3 w-3 text-brand-primary" />
+                          શિબિર પૂર્ણ (Completed)
+                        </span>
+                      ) : e.registration_status === "in_progress" ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-600 animate-ping" />
+                          શિબિર ચાલુ છે (In Progress)
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
                           <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
-                          બાહ્ય પોર્ટલ પર નોંધણી
+                          {e.registration_status === "external" ? "બાહ્ય પોર્ટલ પર નોંધણી" : "નોંધણી બંધ (Closed)"}
                         </span>
                       )}
                     </div>
@@ -322,10 +335,34 @@ function EventsSection({
                         <span>નોંધણી કરો (Register Now)</span>
                         <ArrowRight className="h-4 w-4" />
                       </Link>
+                    ) : e.registration_status === "completed" ? (
+                      <Link
+                        to="/$event/certificate"
+                        params={{ event: e.slug ?? "" }}
+                        className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-primary px-5 text-sm font-semibold text-white shadow-xs transition hover:opacity-90 active:scale-[0.99]"
+                      >
+                        <Award className="h-4 w-4" />
+                        <span>પ્રમાણપત્ર મેળવો (Download Certificate)</span>
+                      </Link>
+                    ) : e.registration_status === "in_progress" ? (
+                      <div className="space-y-1.5">
+                        <div className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-amber-500/10 text-amber-800 px-5 text-xs sm:text-sm font-semibold border border-amber-500/20">
+                          <span>શિબિર ચાલુ છે (Registration Closed)</span>
+                        </div>
+                        {e.contact_mobile && (
+                          <p className="text-[11px] text-center text-muted-foreground">
+                            વધુ વિગતો માટે સંપર્ક: <span className="font-mono font-bold text-foreground">{e.contact_mobile}</span>
+                          </p>
+                        )}
+                      </div>
                     ) : (
                       <div className="space-y-1.5">
                         <div className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-muted/80 text-muted-foreground px-5 text-xs sm:text-sm font-semibold border border-border">
-                          <span>બાહ્ય પોર્ટલ પર નોંધણી (External Portal)</span>
+                          <span>
+                            {e.registration_status === "external"
+                              ? "બાહ્ય પોર્ટલ પર નોંધણી (External Portal)"
+                              : "નોંધણી બંધ થયેલ છે (Registration Closed)"}
+                          </span>
                         </div>
                         {e.contact_mobile && (
                           <p className="text-[11px] text-center text-muted-foreground">

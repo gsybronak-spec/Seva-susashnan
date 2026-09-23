@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { useSession } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { mergeCoverage } from "@/lib/event-config";
+import { mergeCoverage, getEventRegistrationStatus } from "@/lib/event-config";
 
 
 const registerSchema = z.object({
@@ -228,13 +228,12 @@ export const registerParticipant = createServerFn({ method: "POST" })
     }
 
 
-    // Registration open? (feature toggle on the district's active event)
-    const features = (resolved.event.features ?? {}) as { registration?: boolean };
-    const general = (resolved.event.general ?? {}) as { registration_enabled?: boolean; registration_mode?: string };
-    if (features.registration === false || general.registration_enabled === false || general.registration_mode === "external") {
+    // Registration open? (feature toggle, window, event start/completion)
+    const regStatus = getEventRegistrationStatus(resolved.event);
+    if (!regStatus.isOpen) {
       return {
         ok: false as const,
-        error: "Registrations are currently closed for this district.",
+        error: regStatus.messageGu || "આ શિબિર માટે રજીસ્ટ્રેશન બંધ થયેલ છે.",
       };
     }
 

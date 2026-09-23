@@ -153,18 +153,25 @@ export const adminEventOverview = createServerFn({ method: "GET" }).handler(asyn
   };
   let rows = (data as Row[] | null) ?? [];
 
-  // Enrich with level, venue, and district_name from events table
+  // Exclude Vadodara Yog Shibir from Admin Dashboard listings
+  rows = rows.filter((r) => r.slug !== "vadodara-yog-shibir");
+
+  // Enrich with general config, event_time, level, venue, and district_name from events table
   try {
     const { data: evMeta } = await supabaseAdmin
       .from("events")
-      .select("id, general, venue, district_name");
-    const metaMap = new Map<string, { level?: string; venue?: string; district_name?: string }>();
+      .select("id, general, venue, district_name, event_time, event_date");
+    const metaMap = new Map<string, { level?: string; venue?: string; district_name?: string; general?: any; event_time?: string | null; event_date?: string | null }>();
     for (const em of evMeta ?? []) {
-      const lvl = (em.general as { level?: string } | null)?.level;
+      const g = (em.general as any) ?? null;
+      const lvl = g?.level;
       metaMap.set(em.id, {
         level: lvl,
         venue: em.venue || undefined,
         district_name: em.district_name || undefined,
+        general: g,
+        event_time: em.event_time || g?.event_time || null,
+        event_date: g?.event_date ?? em.event_date ?? null,
       });
     }
     rows = rows.map((r) => {
@@ -174,7 +181,10 @@ export const adminEventOverview = createServerFn({ method: "GET" }).handler(asyn
         level: m?.level || (r.title?.includes("મહાનગરપાલિકા") ? "Municipal" : "District"),
         venue: m?.venue || null,
         district_name: m?.district_name || r.district || null,
-      };
+        general: m?.general || null,
+        event_time: m?.event_time || r.event_time || null,
+        event_date: m?.event_date ?? r.event_date ?? null,
+      } as Row;
     });
   } catch (enrichErr) {
     console.warn("[adminEventOverview] enrich meta error:", enrichErr);

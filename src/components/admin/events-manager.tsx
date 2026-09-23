@@ -51,7 +51,11 @@ import {
   X,
 } from "lucide-react";
 import { invalidateEventQueries } from "@/lib/query-cache";
-import { formatTimeRange } from "@/lib/event-config";
+import {
+  formatTimeRange,
+  sortAdminEventsChronological,
+  getEventRegistrationStatus,
+} from "@/lib/event-config";
 import { matchesAdminEventSearch } from "@/lib/admin-search";
 
 
@@ -112,21 +116,21 @@ function formatDateShort(iso: string | null | undefined): string {
 }
 
 function regStatus(w: EventRow): { label: string; cls: string } {
-  const openAt = w.general?.registration_open_at
-    ? new Date(w.general.registration_open_at).getTime()
-    : null;
-  const closeAt = w.general?.registration_close_at
-    ? new Date(w.general.registration_close_at).getTime()
-    : null;
-  const now = Date.now();
-  if (w.publish_status === "archived" || w.lifecycle_status === "archived" || w.lifecycle_status === "cancelled") {
+  const status = getEventRegistrationStatus(w as any);
+  if (status.status === "completed") {
+    return { label: "Completed", cls: "bg-muted text-muted-foreground" };
+  }
+  if (status.status === "in_progress") {
+    return { label: "In Progress", cls: "bg-amber-500/10 text-amber-600" };
+  }
+  if (status.status === "closed") {
+    if (status.reason === "not_started") {
+      return { label: "Scheduled", cls: "bg-amber-500/10 text-amber-600" };
+    }
     return { label: "Closed", cls: "bg-destructive/10 text-destructive" };
   }
-  if (closeAt != null && Number.isFinite(closeAt) && now > closeAt) {
-    return { label: "Closed", cls: "bg-destructive/10 text-destructive" };
-  }
-  if (openAt != null && Number.isFinite(openAt) && now < openAt) {
-    return { label: "Scheduled", cls: "bg-amber-500/10 text-amber-600" };
+  if (status.status === "external") {
+    return { label: "External", cls: "bg-blue-500/10 text-blue-600" };
   }
   return { label: "Open", cls: "bg-brand-success/10 text-brand-success" };
 }
@@ -190,7 +194,10 @@ export function EventsManager({
   );
 
   const filteredRows = useMemo(() => {
-    return rows.filter((w) => {
+    const list = rows.filter((w) => {
+      // Exclude vadodara-yog-shibir from admin manager
+      if (w.slug === "vadodara-yog-shibir") return false;
+
       // Level filter
       if (levelFilter !== "all") {
         const isMun =
@@ -220,6 +227,8 @@ export function EventsManager({
 
       return true;
     });
+
+    return sortAdminEventsChronological(list);
   }, [rows, search, levelFilter, statusFilter]);
 
   const hasActiveFilters = Boolean(

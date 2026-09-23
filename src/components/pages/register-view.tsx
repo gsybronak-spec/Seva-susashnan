@@ -1,5 +1,5 @@
 import { BRAND } from "@/lib/brand";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { registerParticipant, lookupReferralCode } from "@/lib/registration.functions";
 import { partnerLookup } from "@/lib/partner.functions";
 import { useEventConfig, type EventConfigInitialData } from "@/hooks/use-event-config";
-import { type FormField, formatTimeRange } from "@/lib/event-config";
+import { type FormField, formatTimeRange, getEventRegistrationStatus } from "@/lib/event-config";
 import { DynamicFormRenderer } from "@/components/dynamic-form-renderer";
 import {
   Calendar,
@@ -19,6 +19,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Award,
 } from "lucide-react";
 
 export type RegisterViewProps = {
@@ -512,9 +513,8 @@ export function RegisterView({
     ((config.general as any)?.venue && (config.general as any).venue.trim().length > 0 ? (config.general as any).venue.trim() : null) ||
     ((config.general as any)?.venue_address && (config.general as any).venue_address.trim().length > 0 ? (config.general as any).venue_address.trim() : null) ||
     "સ્થળ ટૂંક સમયમાં જાહેર કરવામાં આવશે";
-  const isRegistrationClosed =
-    config.features?.registration === false ||
-    (config.general as any)?.registration_mode === "external";
+  const regStatus = getEventRegistrationStatus(config);
+  const isRegistrationClosed = !regStatus.isOpen;
   const contactMobile = config.general?.contact_mobile || (config.general as any)?.contact_mobiles?.[0] || "";
 
   return (
@@ -648,18 +648,49 @@ export function RegisterView({
               </div>
             )}
 
-            {/* Dynamic Form Engine OR External Registration Notice */}
+            {/* Dynamic Form Engine OR Registration Closed / Completed Notice */}
             {isRegistrationClosed ? (
               <div className="p-6 sm:p-8 text-center space-y-4 rounded-xl bg-amber-50/60 border border-amber-200/80">
                 <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-800 mx-auto">
-                  <AlertCircle className="h-6 w-6" />
+                  {regStatus.status === "completed" ? (
+                    <Award className="h-6 w-6 text-[#0F3E3E]" />
+                  ) : (
+                    <AlertCircle className="h-6 w-6" />
+                  )}
                 </div>
                 <h3 className="text-lg font-bold text-[#0F3E3E]">
-                  બાહ્ય પોર્ટલ પર નોંધણી / Registration on External Portal
+                  {regStatus.status === "completed"
+                    ? "યોગ શિબિર પૂર્ણ થયેલ છે / Event Completed"
+                    : regStatus.status === "in_progress"
+                      ? "યોગ શિબિર ચાલુ છે / Event In Progress"
+                      : regStatus.status === "external"
+                        ? "બાહ્ય પોર્ટલ પર નોંધણી / Registration on External Portal"
+                        : "નોંધણી બંધ થયેલ છે / Registration Closed"}
                 </h3>
                 <p className="text-sm text-[#5C7065] max-w-md mx-auto leading-relaxed">
-                  આ શિબિર માટે નોંધણી અન્ય વ્યવસ્થા અથવા સત્તાવાર બાહ્ય પોર્ટલ દ્વારા સંચાલિત કરવામાં આવે છે.
+                  {regStatus.status === "completed"
+                    ? "આ યોગ શિબિર પૂર્ણ થઈ ગઈ છે. હવે આ શિબિર માટે રજીસ્ટ્રેશન કરી શકાશે નહીં."
+                    : regStatus.status === "in_progress"
+                      ? "આ યોગ શિબિર હાલમાં શરૂ છે. હવે આ શિબિર માટે રજીસ્ટ્રેશન બંધ થયેલ છે."
+                      : regStatus.status === "external"
+                        ? "આ શિબિર માટે નોંધણી અન્ય વ્યવસ્થા અથવા સત્તાવાર બાહ્ય પોર્ટલ દ્વારા સંચાલિત કરવામાં આવે છે."
+                        : (regStatus.messageGu || "આ શિબિર માટે રજીસ્ટ્રેશન બંધ થયેલ છે.")}
                 </p>
+
+                {regStatus.status === "completed" && config.features?.certificate !== false && (
+                  <div className="pt-2">
+                    <Button asChild className="h-12 px-6 bg-[#0F3E3E] hover:bg-[#144D4D] text-[#FAF8F5] font-semibold rounded-xl">
+                      <Link
+                        to={eventSlug ? "/$event/certificate" : "/certificate"}
+                        params={eventSlug ? { event: eventSlug } : undefined}
+                      >
+                        <Award className="w-4 h-4 mr-2" />
+                        Download Certificate / પ્રમાણપત્ર મેળવો
+                      </Link>
+                    </Button>
+                  </div>
+                )}
+
                 {contactMobile && (
                   <div className="p-3 bg-white/80 border border-amber-200/50 rounded-xl inline-block text-xs font-semibold text-[#0F3E3E]">
                     વધુ માહિતી અને સહાય માટે સંપર્ક: <span className="font-bold font-mono text-brand-primary">{contactMobile}</span>

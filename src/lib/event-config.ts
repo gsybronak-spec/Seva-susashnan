@@ -899,8 +899,9 @@ export function getEventEndTimestampMs(event: {
   let endTimeStr = (g.end_time || "").trim();
 
   // If end_time is not directly provided in HH:mm format, derive from start_time + duration_minutes
-  if (!endTimeStr && g.start_time && /^\d{1,2}:\d{2}$/.test(g.start_time)) {
-    const [sh, sm] = g.start_time.split(":").map(Number);
+  const startTime = (g.start_time || ((event as any).event_time && /^\d{1,2}:\d{2}/.test((event as any).event_time) ? (event as any).event_time.slice(0, 5) : "") || "").trim();
+  if (!endTimeStr && startTime && /^\d{1,2}:\d{2}$/.test(startTime)) {
+    const [sh, sm] = startTime.split(":").map(Number);
     const duration = typeof g.duration_minutes === "number" && g.duration_minutes > 0 ? g.duration_minutes : 120;
     const totalMinutes = sh * 60 + sm + duration;
     const eh = Math.floor(totalMinutes / 60) % 24;
@@ -909,8 +910,9 @@ export function getEventEndTimestampMs(event: {
   }
 
   // If still not found, try parsing from event_time string like "06:00 AM – 08:00 AM" or "06:00 AM to 08:00 AM"
-  if (!endTimeStr && g.event_time) {
-    const match = g.event_time.match(/[-–—to\s]+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  const rawEventTime = ((event as any).event_time || g.event_time || "").trim();
+  if (!endTimeStr && rawEventTime) {
+    const match = rawEventTime.match(/[-–—to\s]+(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
     if (match) {
       let h = parseInt(match[1], 10);
       const m = parseInt(match[2], 10);
@@ -941,12 +943,16 @@ export function getEventEndTimestampMs(event: {
  * Note: If lifecycle_status is 'cancelled' or 'archived', returns false.
  * If scheduled end datetime cannot be reliably determined, returns false (never early-unlock).
  */
-export function isEventCompleted(event: {
-  general?: Partial<EventGeneral> | null;
-  event_date?: string | null;
-  lifecycle_status?: string | null;
-  status?: Partial<EventStatus> | null;
-}): boolean {
+export function isEventCompleted(
+  event: {
+    general?: Partial<EventGeneral> | null;
+    event_date?: string | null;
+    event_time?: string | null;
+    lifecycle_status?: string | null;
+    status?: Partial<EventStatus> | null;
+  },
+  nowMs: number = Date.now(),
+): boolean {
   if (event.lifecycle_status === "completed" || event.status?.value === "completed") {
     return true;
   }
@@ -959,7 +965,183 @@ export function isEventCompleted(event: {
     return false;
   }
 
-  return Date.now() >= endMs;
+  return nowMs >= endMs;
+}
+
+export type EventRegistrationStatus = {
+  isOpen: boolean;
+  status: "open" | "in_progress" | "completed" | "closed" | "external";
+  reason: "before_start" | "in_progress" | "event_completed" | "manual_closed" | "external" | "not_started" | "window_closed";
+  messageGu: string;
+  messageEn: string;
+};
+
+/**
+ * Determines whether registration is open for an event and returns localized status messages.
+ *
+ * Rules:
+ * 1. Cancelled or archived -> closed
+ * 2. Explicitly disabled (features.registration === false or general.registration_enabled === false) -> closed or external
+ * 3. Event completed (either explicitly marked completed, or scheduled end datetime in Asia/Kolkata has passed) ->
+ *    status: "completed", isOpen: false,
+ *    messageGu: "આ યોગ શિબિર પૂર્ણ થઈ ગઈ છે. હવે આ શિબિર માટે રજીસ્ટ્રેશન કરી શકાશે નહીં."
+ *    messageEn: "This Yog Shibir has been completed. Registrations are closed."
+ * 4. Event in progress (now >= start_time && now < end_time in Asia/Kolkata) ->
+ *    status: "in_progress", isOpen: false,
+ *    messageGu: "આ યોગ શિબિર હાલમાં શરૂ છે. હવે આ શિબિર માટે રજીસ્ટ્રેશન બંધ થયેલ છે."
+ *    messageEn: "This Yog Shibir is currently in progress. Registrations are now closed."
+ * 5. Undated/postponed events (e.g. Kheda without a declared date) ->
+ *    startInfo is null, so registration remains OPEN (never auto-closed).
+ * 6. Before event start ->
+ *    Check registration_open_at / registration_close_at window. If window open -> isOpen: true, status: "open".
+ */
+export function getEventRegistrationStatus(
+  event: {
+    general?: Partial<EventGeneral> | null;
+    features?: { registration?: boolean } | null;
+    event_date?: string | null;
+    event_time?: string | null;
+    lifecycle_status?: string | null;
+    status?: Partial<EventStatus> | null;
+    [key: string]: unknown;
+  },
+  nowMs: number = Date.now(),
+): EventRegistrationStatus {
+  const g = event.general ?? {};
+  const lifecycle = event.lifecycle_status || (event.status as any)?.value || ((g as any)?.status as any)?.value;
+
+  // 1. Cancelled or archived
+  if (lifecycle === "cancelled" || lifecycle === "archived") {
+    return {
+      isOpen: false,
+      status: "closed",
+      reason: "manual_closed",
+      messageGu: "આ શિબિર હાલમાં બંધ કરવામાં આવેલ છે.",
+      messageEn: "This event is currently closed.",
+    };
+  }
+
+  // 2. Feature toggles / external mode
+  if (event.features?.registration === false || (g as any).registration_enabled === false) {
+    if ((g as any).registration_mode === "external") {
+      return {
+        isOpen: false,
+        status: "external",
+        reason: "external",
+        messageGu: "આ શિબિર માટે નોંધણી બાહ્ય પોર્ટલ દ્વારા સંચાલિત કરવામાં આવે છે.",
+        messageEn: "Registrations for this event are handled via an external portal.",
+      };
+    }
+    return {
+      isOpen: false,
+      status: "closed",
+      reason: "manual_closed",
+      messageGu: "આ શિબિર માટે રજીસ્ટ્રેશન બંધ થયેલ છે.",
+      messageEn: "Registrations are closed for this event.",
+    };
+  }
+
+  if ((g as any).registration_mode === "external") {
+    return {
+      isOpen: false,
+      status: "external",
+      reason: "external",
+      messageGu: "આ શિબિર માટે નોંધણી બાહ્ય પોર્ટલ દ્વારા સંચાલિત કરવામાં આવે છે.",
+      messageEn: "Registrations for this event are handled via an external portal.",
+    };
+  }
+
+  // 3. Explicit completion or past end datetime
+  if (lifecycle === "completed" || isEventCompleted(event, nowMs)) {
+    return {
+      isOpen: false,
+      status: "completed",
+      reason: "event_completed",
+      messageGu: "આ યોગ શિબિર પૂર્ણ થઈ ગઈ છે. હવે આ શિબિર માટે રજીસ્ટ્રેશન કરી શકાશે નહીં.",
+      messageEn: "This Yog Shibir has been completed. Registrations are closed.",
+    };
+  }
+
+  // 4. Resolve start info
+  const startInfo = getEventStartInfo(event as any);
+
+  // If undated/postponed (e.g. Kheda without a declared date), keep registration OPEN
+  if (!startInfo || startInfo.startMs === 0) {
+    return {
+      isOpen: true,
+      status: "open",
+      reason: "before_start",
+      messageGu: "",
+      messageEn: "",
+    };
+  }
+
+  const endMs = getEventEffectiveEndTimestampMs(event as any, startInfo) ?? (startInfo.startMs + 7_200_000);
+
+  // If past end time
+  if (nowMs >= endMs) {
+    return {
+      isOpen: false,
+      status: "completed",
+      reason: "event_completed",
+      messageGu: "આ યોગ શિબિર પૂર્ણ થઈ ગઈ છે. હવે આ શિબિર માટે રજીસ્ટ્રેશન કરી શકાશે નહીં.",
+      messageEn: "This Yog Shibir has been completed. Registrations are closed.",
+    };
+  }
+
+  // If at or past start time (and has explicit time configured)
+  if (startInfo.hasTime && nowMs >= startInfo.startMs) {
+    return {
+      isOpen: false,
+      status: "in_progress",
+      reason: "in_progress",
+      messageGu: "આ યોગ શિબિર હાલમાં શરૂ છે. હવે આ શિબિર માટે રજીસ્ટ્રેશન બંધ થયેલ છે.",
+      messageEn: "This Yog Shibir is currently in progress. Registrations are now closed.",
+    };
+  }
+
+  // 5. Before event start -> check optional registration window
+  const openAtStr = (g as any).registration_open_at;
+  const closeAtStr = (g as any).registration_close_at;
+  if (openAtStr) {
+    const openAt = new Date(openAtStr).getTime();
+    if (Number.isFinite(openAt) && nowMs < openAt) {
+      return {
+        isOpen: false,
+        status: "closed",
+        reason: "not_started",
+        messageGu: "આ શિબિર માટે રજીસ્ટ્રેશન ટૂંક સમયમાં શરૂ થશે.",
+        messageEn: "Registration will open soon.",
+      };
+    }
+  }
+  if (closeAtStr) {
+    const closeAt = new Date(closeAtStr).getTime();
+    if (Number.isFinite(closeAt) && nowMs > closeAt) {
+      return {
+        isOpen: false,
+        status: "closed",
+        reason: "window_closed",
+        messageGu: "આ શિબિર માટે રજીસ્ટ્રેશન બંધ થયેલ છે.",
+        messageEn: "Registration has closed.",
+      };
+    }
+  }
+
+  return {
+    isOpen: true,
+    status: "open",
+    reason: "before_start",
+    messageGu: "",
+    messageEn: "",
+  };
+}
+
+export function isRegistrationOpenForEvent(
+  event: any,
+  nowMs: number = Date.now(),
+): boolean {
+  return getEventRegistrationStatus(event, nowMs).isOpen;
 }
 
 export type SortableAdminEvent = {
@@ -1096,7 +1278,7 @@ export function sortAdminEventsChronological<T extends SortableAdminEvent>(
 
     const g = event.general ?? {};
     const lifecycle = event.lifecycle_status || (event.status as any)?.value || (g.status as any)?.value;
-    const isExplicitCompleted = lifecycle === "completed" || isEventCompleted(event as any);
+    const isExplicitCompleted = lifecycle === "completed" || isEventCompleted(event as any, nowMs);
     const isExplicitLive = lifecycle === "live";
 
     if (isExplicitCompleted || nowMs >= endMs) {

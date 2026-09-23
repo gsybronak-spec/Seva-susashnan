@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { adminEventOverview } from "@/lib/organisation.functions";
+import { sortAdminEventsChronological } from "@/lib/event-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -81,7 +82,10 @@ export function EventOverview({
   );
 
   const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
+    const list = rows.filter((r) => {
+      // Exclude vadodara-yog-shibir from admin overview
+      if (r.slug === "vadodara-yog-shibir") return false;
+
       // Level filter
       if (levelFilter !== "all") {
         const isMun =
@@ -103,6 +107,8 @@ export function EventOverview({
 
       return true;
     });
+
+    return sortAdminEventsChronological(list);
   }, [rows, search, levelFilter, statusFilter]);
 
   const hasActiveFilters = Boolean(

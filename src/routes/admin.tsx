@@ -522,7 +522,7 @@ function Dashboard({
     queryFn: () => eventsFn(),
   });
   const eventOptions = useMemo(() => {
-    const rows = (eventsData?.ok ? eventsData.rows : []) as unknown as Array<{
+    const rawRows = (eventsData?.ok ? eventsData.rows : []) as unknown as Array<{
       id: string;
       slug: string;
       general: { title?: string } | null;
@@ -532,6 +532,7 @@ function Dashboard({
       coverage_district_names?: string[];
       is_active: boolean;
     }>;
+    const rows = rawRows.filter((r) => r.slug !== "vadodara-yog-shibir");
     return rows.map((r) => {
       const cov = r.coverage_type ?? "single";
       const covLabel =

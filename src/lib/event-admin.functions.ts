@@ -162,9 +162,10 @@ export const adminListEvents = createServerFn({ method: "GET" })  .handler(async
       };
     });
 
+    const filteredRows = mappedRows.filter((w) => (w as any).slug !== "vadodara-yog-shibir");
     return {
       ok: true as const,
-      rows: sortAdminEventsChronological(mappedRows),
+      rows: sortAdminEventsChronological(filteredRows),
     };
   });
 

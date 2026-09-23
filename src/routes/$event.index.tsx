@@ -6,6 +6,7 @@ import { ArrowRight, Award, HeartPulse, Users, MapPin } from "lucide-react";
 import { useEventConfig, type EventConfigInitialData } from "@/hooks/use-event-config";
 import { EventInfoCard } from "@/components/event-info-card";
 import { BRAND } from "@/lib/brand";
+import { getEventRegistrationStatus } from "@/lib/event-config";
 
 const loadEventHomeData = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
@@ -43,6 +44,7 @@ function EventHome() {
   const loaderData = Route.useLoaderData();
   const { config, districtName } = useEventConfig(eventSlug, loaderData?.initialData);
   const { features, general } = config;
+  const regStatus = getEventRegistrationStatus(config);
 
   const displayName = districtName ?? general.title ?? eventSlug;
 
@@ -67,14 +69,31 @@ function EventHome() {
               </p>
             )}
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              {features.registration && (
+              {regStatus.isOpen && features.registration && (
                 <Button asChild size="lg" className="h-12 px-8 text-base">
                   <Link to="/$event/register" params={{ event: eventSlug }}>
                     Register Now <ArrowRight className="ml-2 h-5 w-5" />
                   </Link>
                 </Button>
               )}
-              {features.certificate && (
+              {regStatus.status === "in_progress" && (
+                <div className="inline-flex h-12 items-center rounded-xl bg-amber-500/10 border border-amber-500/20 px-6 text-sm font-semibold text-amber-700">
+                  યોગ શિબિર હાલમાં શરૂ છે (Registration Closed)
+                </div>
+              )}
+              {regStatus.status === "completed" && features.certificate && (
+                <Button asChild size="lg" className="h-12 px-8 text-base bg-brand-primary text-white">
+                  <Link to="/$event/certificate" params={{ event: eventSlug }}>
+                    <Award className="mr-2 h-5 w-5" /> Download Certificate
+                  </Link>
+                </Button>
+              )}
+              {!regStatus.isOpen && regStatus.status !== "completed" && regStatus.status !== "in_progress" && (
+                <div className="inline-flex h-12 items-center rounded-xl bg-muted px-6 text-sm font-semibold text-muted-foreground">
+                  નોંધણી બંધ થયેલ છે (Registration Closed)
+                </div>
+              )}
+              {features.certificate && regStatus.status !== "completed" && (
                 <Button asChild size="lg" variant="outline" className="h-12 px-8 text-base">
                   <Link to="/$event/certificate" params={{ event: eventSlug }}>Download Certificate</Link>
                 </Button>
