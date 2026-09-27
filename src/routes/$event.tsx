@@ -57,9 +57,29 @@ const resolveEventPublic = createServerFn({ method: "POST" })
   });
 
 export const Route = createFileRoute("/$event")({
-  loader: async ({ params }) => {
-    const res = await resolveEventPublic({ data: { slug: params.event.toLowerCase() } });
-    if (!res.ok || !res.event) throw notFound();
+  loader: async ({ params, location }) => {
+    const slug = params.event.toLowerCase();
+    const isScannerRoute =
+      slug === "scanner" ||
+      slug === "scan" ||
+      location.pathname.endsWith("/scan") ||
+      location.pathname.endsWith("/scanner");
+
+    const res = await resolveEventPublic({ data: { slug } });
+    if (!res.ok || !res.event) {
+      if (isScannerRoute) {
+        return {
+          event: {
+            id: "",
+            slug,
+            name: "Gujarat State Yog Board",
+            is_active: true,
+          },
+          title: "Universal QR Scanner",
+        };
+      }
+      throw notFound();
+    }
     return { event: res.event, title: res.title ?? null };
   },
   head: ({ loaderData }) => {

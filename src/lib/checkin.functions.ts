@@ -70,24 +70,27 @@ export const resolveQrToken = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        token: z.string().trim().min(6).max(64),
+        token: z.string().trim().min(2).max(1000),
         event_slug: z.string().trim().max(80).optional(),
         event_id: z.string().uuid().optional(),
       })
       .parse(input),
   )
   .handler(async ({ data }): Promise<QrResolution> => {
-    // Server-side authz: only super admin may resolve raw QR tokens here.
-    // Event operators use dedicated operatorCheckIn in event-engine.functions.ts
     await requireSuperAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const expectedEventId = data.event_id ?? (await loadEventId(data.event_slug));
+    const { resolveTrustedToken } = await import("@/lib/event-engine.functions");
 
-    // Look up participant across registrations by unique qr_token
+    const resolved = await resolveTrustedToken(data.token);
+    if (!resolved.ok) {
+      return { ok: false, error: resolved.message || "Invalid or unknown QR code." };
+    }
+
     const { data: reg } = await supabaseAdmin
       .from("registrations")
       .select("registration_number, full_name, mobile, gender, district, taluka, custom_fields, organization, qr_token, event_id")
-      .eq("qr_token", data.token)
+      .eq("id", resolved.registration.id)
+      .limit(1)
       .maybeSingle();
 
     if (!reg) return { ok: false, error: "Invalid or unknown QR code." };
@@ -104,20 +107,6 @@ export const resolveQrToken = createServerFn({ method: "POST" })
       qr_token: string | null;
       event_id: string;
     };
-
-    if (expectedEventId && regData.event_id !== expectedEventId) {
-      const { data: ev } = await supabaseAdmin
-        .from("events")
-        .select("general")
-        .eq("id", regData.event_id)
-        .maybeSingle();
-      const g = (ev?.general ?? {}) as { title?: string };
-      const eventTitle = g.title ? `"${g.title}"` : "another event";
-      return {
-        ok: false,
-        error: `Participant is registered for ${eventTitle}, not this event.`,
-      };
-    }
 
     const eventId = regData.event_id;
 
@@ -183,17 +172,15 @@ export const performCheckin = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }): Promise<CheckinResult> => {
-    // Server-side authz: only super admin may check-in here.
-    // Event operators use dedicated operatorCheckIn in event-engine.functions.ts
     const staff = await requireSuperAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const expectedEventId = data.event_id ?? (await loadEventId(data.event_slug));
 
-    // Locate the participant by registration_number
+    // Locate the participant by registration_number across events
     const { data: reg } = await supabaseAdmin
       .from("registrations")
       .select("registration_number, full_name, mobile, gender, district, taluka, custom_fields, organization, qr_token, event_id")
       .eq("registration_number", data.registration_number)
+      .limit(1)
       .maybeSingle();
 
     if (!reg) return { ok: false, error: "Participant not found." };
@@ -210,20 +197,6 @@ export const performCheckin = createServerFn({ method: "POST" })
       qr_token: string | null;
       event_id: string;
     };
-
-    if (expectedEventId && regData.event_id !== expectedEventId) {
-      const { data: ev } = await supabaseAdmin
-        .from("events")
-        .select("general")
-        .eq("id", regData.event_id)
-        .maybeSingle();
-      const g = (ev?.general ?? {}) as { title?: string };
-      const eventTitle = g.title ? `"${g.title}"` : "another event";
-      return {
-        ok: false,
-        error: `Participant is registered for ${eventTitle}, not this event.`,
-      };
-    }
 
     const eventId = regData.event_id;
     const cf = (regData.custom_fields ?? {}) as Record<string, unknown>;

@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { GenericScannerView } from "@/components/pages/generic-scanner-view";
-import { VADODARA_EVENT_ID } from "@/lib/event-config";
+import { EventOperatorScannerView } from "@/components/pages/event-operator-scanner-view";
 
 export const Route = createFileRoute("/vadodara-scanner")({
-  component: () => <GenericScannerView defaultEventId={VADODARA_EVENT_ID} />,
+  component: () => <EventOperatorScannerView eventSlug="vadodara-yog-shibir" />,
   head: () => ({
     meta: [
       { title: "Vadodara Event QR Scanner" },

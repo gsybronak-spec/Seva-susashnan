@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   AlertTriangle,
-  ArrowLeft,
   Camera,
   CheckCircle2,
   Clock,
@@ -13,12 +12,10 @@ import {
   Loader2,
   LogIn,
   LogOut,
-  QrCode,
+  Phone,
   RefreshCw,
   Search,
-  ShieldAlert,
   SwitchCamera,
-  User,
   UserCheck,
   Volume2,
   VolumeX,
@@ -27,7 +24,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useEventConfig } from "@/hooks/use-event-config";
 import {
   operatorCheck,
   operatorCheckIn,
@@ -39,23 +35,44 @@ import {
 
 type ScanResult = {
   state: "success" | "duplicate" | "invalid" | "unauthorized" | "error";
+  code?: "PLAIN_REGISTRATION_NUMBER" | "CROSS_EVENT" | "INVALID_QR" | "NOT_FOUND";
   participant_name?: string;
   participant_id?: string;
   event_id?: string;
   event_title?: string;
   district?: string;
   check_in_time?: string;
+  present_count?: number;
+  scan_count?: number;
   error?: string;
-  code?: string;
 };
 
-type ScanHistoryItem = {
+type ManualParticipantRow = {
   id: string;
-  name: string;
-  regId: string;
-  time: string;
-  status: "success" | "duplicate";
+  registration_number: string;
+  full_name: string;
+  mobile: string;
+  district: string;
+  event_id: string;
+  event_title: string;
+  is_attended: boolean;
+  check_in_time?: string | null;
 };
+
+function normalizeMobileClient(raw: string): string {
+  const trimmed = raw.trim();
+  const digitsOnly = trimmed.replace(/[\s\-().+]/g, "");
+  if (/^\d+$/.test(digitsOnly)) {
+    if (digitsOnly.length === 12 && digitsOnly.startsWith("91")) {
+      return digitsOnly.slice(2);
+    }
+    if (digitsOnly.length === 11 && digitsOnly.startsWith("0")) {
+      return digitsOnly.slice(1);
+    }
+    return digitsOnly;
+  }
+  return trimmed;
+}
 
 // Web Audio API feedback
 function playSound(type: "success" | "duplicate" | "error") {
@@ -71,34 +88,31 @@ function playSound(type: "success" | "duplicate" | "error") {
     gain.connect(ctx.destination);
 
     if (type === "success") {
-      // Pleasant double chime (880Hz -> 1175Hz)
       osc.type = "sine";
       osc.frequency.setValueAtTime(880, ctx.currentTime);
-      osc.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.1);
+      osc.frequency.setValueAtTime(1174.66, ctx.currentTime + 0.08);
       gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.28);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.22);
       osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.28);
+      osc.stop(ctx.currentTime + 0.22);
     } else if (type === "duplicate") {
-      // Warning buzz (330Hz -> 220Hz)
       osc.type = "sawtooth";
       osc.frequency.setValueAtTime(330, ctx.currentTime);
-      osc.frequency.setValueAtTime(220, ctx.currentTime + 0.15);
+      osc.frequency.setValueAtTime(220, ctx.currentTime + 0.12);
       gain.gain.setValueAtTime(0.25, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.35);
-    } else {
-      // Error double buzz (180Hz)
-      osc.type = "square";
-      osc.frequency.setValueAtTime(180, ctx.currentTime);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.3);
+    } else {
+      osc.type = "square";
+      osc.frequency.setValueAtTime(180, ctx.currentTime);
+      gain.gain.setValueAtTime(0.22, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.28);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.28);
     }
   } catch {
-    // AudioContext blocked or not supported
+    // AudioContext blocked or unsupported
   }
 }
 
@@ -108,12 +122,8 @@ interface EventOperatorScannerViewProps {
 }
 
 export function EventOperatorScannerView({
-  eventSlug,
   defaultEventId,
 }: EventOperatorScannerViewProps) {
-  const { config, isLoading: isConfigLoading, districtName } = useEventConfig(eventSlug);
-  const targetEventId = config?.id || defaultEventId;
-
   // Server functions
   const checkSession = useServerFn(operatorCheck);
   const signInFn = useServerFn(operatorSignIn);
@@ -145,38 +155,42 @@ export function EventOperatorScannerView({
 
   // Scanner hardware & stream state
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [torchSupported, setTorchSupported] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Result & history state
+  // Result state
   const [result, setResult] = useState<ScanResult | null>(null);
-  const [autoResumeSeconds, setAutoResumeSeconds] = useState<number | null>(null);
-  const [recentScans, setRecentScans] = useState<ScanHistoryItem[]>([]);
 
-  // Manual lookup drawer state
-  const [manualDrawerOpen, setManualDrawerOpen] = useState(false);
+  // Manual mobile search state
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<ManualParticipantRow[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [markingId, setMarkingId] = useState<string | null>(null);
 
-  // Refs for camera loop and timers
+  // Refs for camera lifecycle and concurrency locks
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mobileInputRef = useRef<HTMLInputElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
   const streamTrackRef = useRef<MediaStreamTrack | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const startingCameraRef = useRef(false);
+  const userRequestedCameraRef = useRef(false);
   const isProcessingRef = useRef(false);
   const lastScannedTokenRef = useRef<{ token: string; time: number } | null>(null);
   const autoResumeTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [scannerEngine, setScannerEngine] = useState<"auto" | "BarcodeDetector" | "ZXing">("auto");
 
-  // Check operator session
+  // Check operator session (lightweight single call, never blocks on event config)
   const verifyAuth = useCallback(async () => {
     try {
-      const res = await checkSession({ data: { target_event_id: targetEventId || undefined } });
+      const res = await checkSession({ data: { target_event_id: defaultEventId || undefined } });
       if (res.authed) {
         setSession(res);
       } else {
@@ -187,47 +201,82 @@ export function EventOperatorScannerView({
     } finally {
       setIsCheckingAuth(false);
     }
-  }, [checkSession, targetEventId]);
+  }, [checkSession, defaultEventId]);
 
   useEffect(() => {
-    verifyAuth();
+    void verifyAuth();
   }, [verifyAuth]);
+
+  // Release all camera hardware tracks safely
+  const stopCamera = useCallback(() => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (controlsRef.current) {
+      try {
+        controlsRef.current.stop();
+      } catch {}
+      controlsRef.current = null;
+    }
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach((t) => {
+          try {
+            t.stop();
+          } catch {}
+        });
+      } catch {}
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      try {
+        const currentObj = videoRef.current.srcObject as MediaStream | null;
+        if (currentObj) {
+          currentObj.getTracks().forEach((t) => {
+            try {
+              t.stop();
+            } catch {}
+          });
+        }
+        videoRef.current.srcObject = null;
+      } catch {}
+    }
+    streamTrackRef.current = null;
+    setTorchEnabled(false);
+    setTorchSupported(false);
+    setIsCameraActive(false);
+    isProcessingRef.current = false;
+  }, []);
 
   // Clean up camera on unmount
   useEffect(() => {
     return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      controlsRef.current?.stop();
+      userRequestedCameraRef.current = false;
+      stopCamera();
       if (autoResumeTimerRef.current) clearTimeout(autoResumeTimerRef.current);
     };
-  }, []);
+  }, [stopCamera]);
 
   // Advance / reset scanner to ready state
   const scanNext = useCallback(() => {
     if (autoResumeTimerRef.current) clearTimeout(autoResumeTimerRef.current);
-    setAutoResumeSeconds(null);
     setResult(null);
     isProcessingRef.current = false;
   }, []);
 
-  // Hands-free fast auto-resume (~0.7s on success, ~1.1s on duplicate/error)
+  // Auto-clear QR scan result after 2.5s so continuous scanning stays hands-free while readable
   useEffect(() => {
     if (!result) {
-      setAutoResumeSeconds(null);
       if (autoResumeTimerRef.current) clearTimeout(autoResumeTimerRef.current);
       return;
     }
-
-    const duration = result.state === "success" ? 0.7 : 1.1;
-    setAutoResumeSeconds(duration);
-
     const timer = setTimeout(() => {
-      scanNext();
-    }, duration * 1000);
-
+      isProcessingRef.current = false;
+    }, 900);
     autoResumeTimerRef.current = timer;
     return () => clearTimeout(timer);
-  }, [result, scanNext]);
+  }, [result]);
 
   // Process decoded QR token
   const processToken = useCallback(
@@ -235,11 +284,10 @@ export function EventOperatorScannerView({
       if (isProcessingRef.current) return;
       const now = Date.now();
 
-      // Guard: prevent immediate repeat scan within 1.2 seconds for the exact same token
       if (
         lastScannedTokenRef.current &&
         lastScannedTokenRef.current.token === token &&
-        now - lastScannedTokenRef.current.time < 1200
+        now - lastScannedTokenRef.current.time < 1500
       ) {
         return;
       }
@@ -252,48 +300,27 @@ export function EventOperatorScannerView({
         const res = (await checkInFn({
           data: {
             qr_token: token,
-            target_event_id: session?.event_id || targetEventId,
           },
-        })) as ScanResult & { present_count?: number; scan_count?: number };
+        })) as ScanResult;
 
         setResult(res);
 
-        // Update live counts in session header
-        if (typeof res.present_count === "number" || typeof res.scan_count === "number") {
+        if (res.present_count !== undefined && res.scan_count !== undefined) {
           setSession((prev) =>
             prev
               ? {
                   ...prev,
-                  present_count: res.present_count ?? prev.present_count,
-                  scan_count: res.scan_count ?? prev.scan_count,
+                  present_count: res.present_count,
+                  scan_count: res.scan_count,
                 }
               : prev,
           );
         }
 
-        // Sound feedback
         if (soundEnabled) {
           if (res.state === "success") playSound("success");
           else if (res.state === "duplicate") playSound("duplicate");
           else playSound("error");
-        }
-
-        // Add to recent activity
-        if (res.state === "success" || res.state === "duplicate") {
-          setRecentScans((prev) => [
-            {
-              id: `${Date.now()}-${Math.random()}`,
-              name: res.participant_name || "Participant",
-              regId: res.participant_id || "",
-              time: new Date().toLocaleTimeString("en-IN", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              }),
-              status: res.state as "success" | "duplicate",
-            },
-            ...prev.slice(0, 4),
-          ]);
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "હાજરી તપાસમાં ક્ષતિ આવી.";
@@ -303,176 +330,170 @@ export function EventOperatorScannerView({
         setBusy(false);
       }
     },
-    [checkInFn, session?.event_id, soundEnabled, targetEventId],
+    [checkInFn, soundEnabled],
   );
 
-  // Start continuous camera stream (Dual Engine: Native BarcodeDetector + ZXing fallback)
-  const startCamera = useCallback(async () => {
-    if (!videoRef.current) return;
-    setBusy(true);
-
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
+  // Acquire camera stream with safe progressive fallback constraints
+  async function acquireSafeMediaStream(mode: "environment" | "user"): Promise<MediaStream> {
+    if (typeof window === "undefined") {
+      throw new Error("Camera unavailable on server");
     }
-    if (controlsRef.current) {
-      try {
-        controlsRef.current.stop();
-      } catch {}
-      controlsRef.current = null;
+    if (!window.isSecureContext && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+      throw new Error("HTTPS required for camera");
+    }
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+      throw new Error("getUserMedia not supported");
     }
 
-    let usedNative = false;
+    const constraintCandidates: MediaStreamConstraints[] = [
+      { video: { facingMode: mode }, audio: false },
+      { video: { facingMode: { ideal: mode } }, audio: false },
+      { video: true, audio: false },
+    ];
 
-    // 1. Try Native BarcodeDetector when supported by browser
-    if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+    let lastError: unknown = null;
+    for (const constraints of constraintCandidates) {
       try {
-        const formats: string[] = await (window as any).BarcodeDetector.getSupportedFormats().catch(() => []);
-        if (formats.includes("qr_code")) {
-          const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: facingMode },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              advanced: [{ focusMode: "continuous" } as any],
-            },
-            audio: false,
-          });
-
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            await videoRef.current.play().catch(() => {});
-
-            const track = stream.getVideoTracks()[0];
-            if (track) {
-              streamTrackRef.current = track;
-              const capabilities = (track.getCapabilities?.() as any) || {};
-              setTorchSupported(Boolean(capabilities.torch));
-            }
-
-            let activeLoop = true;
-            const detectLoop = async () => {
-              if (!activeLoop) return;
-              if (
-                videoRef.current &&
-                videoRef.current.readyState >= 2 &&
-                !isProcessingRef.current
-              ) {
-                try {
-                  const barcodes = await detector.detect(videoRef.current);
-                  if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-                    void processToken(barcodes[0].rawValue);
-                  }
-                } catch {
-                  // Ignore per-frame decode non-matches
-                }
-              }
-              if (activeLoop) {
-                animFrameRef.current = requestAnimationFrame(detectLoop);
-              }
-            };
-            animFrameRef.current = requestAnimationFrame(detectLoop);
-
-            controlsRef.current = {
-              stop: () => {
-                activeLoop = false;
-                if (animFrameRef.current) {
-                  cancelAnimationFrame(animFrameRef.current);
-                  animFrameRef.current = null;
-                }
-                stream.getTracks().forEach((t) => t.stop());
-                if (videoRef.current) {
-                  videoRef.current.srcObject = null;
-                }
-              },
-            };
-            usedNative = true;
-            setScannerEngine("BarcodeDetector");
-          }
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (err: any) {
+        lastError = err;
+        // If user explicitly denied permission, do not retry further constraint variations
+        if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError" || err?.name === "SecurityError") {
+          break;
         }
-      } catch (nativeErr) {
-        console.warn("BarcodeDetector initialization failed, falling back to ZXing:", nativeErr);
-        usedNative = false;
       }
     }
+    throw lastError || new Error("Unable to access camera");
+  }
 
-    // 2. Fallback to ZXing BrowserQRCodeReader with continuous focus constraints
-    if (!usedNative) {
+  // Start camera ONLY when explicitly requested by user tap ("કેમેરા શરૂ કરો")
+  const startCamera = useCallback(
+    async (overrideFacingMode?: "environment" | "user") => {
+      if (startingCameraRef.current) return;
+      startingCameraRef.current = true;
+      userRequestedCameraRef.current = true;
+      setIsStartingCamera(true);
+      setCameraError(null);
+
+      // Always stop and release any old MediaStream before starting another
+      stopCamera();
+
+      const targetMode = overrideFacingMode ?? facingMode;
+
       try {
-        const { BrowserQRCodeReader } = await import("@zxing/browser");
-        const reader = new BrowserQRCodeReader(undefined, {
-          delayBetweenScanAttempts: 25,
-        });
+        const stream = await acquireSafeMediaStream(targetMode);
+        streamRef.current = stream;
 
-        controlsRef.current = await reader.decodeFromConstraints(
-          {
-            video: {
-              facingMode: { ideal: facingMode },
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              advanced: [{ focusMode: "continuous" } as any],
-            },
-            audio: false,
-          },
-          videoRef.current,
-          (decoded) => {
-            if (decoded && !isProcessingRef.current) {
-              void processToken(decoded.getText());
-            }
-          },
-        );
+        const videoEl = videoRef.current;
+        if (!videoEl) {
+          stopCamera();
+          return;
+        }
 
-        // Check torch support on the ZXing stream
-        try {
-          const stream = videoRef.current.srcObject as MediaStream | null;
-          const track = stream?.getVideoTracks()[0];
-          if (track) {
-            streamTrackRef.current = track;
+        videoEl.setAttribute("playsinline", "true");
+        videoEl.setAttribute("webkit-playsinline", "true");
+        videoEl.muted = true;
+        videoEl.srcObject = stream;
+        await videoEl.play().catch(() => {});
+
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          streamTrackRef.current = track;
+          try {
             const capabilities = (track.getCapabilities?.() as any) || {};
             setTorchSupported(Boolean(capabilities.torch));
+          } catch {
+            setTorchSupported(false);
           }
-        } catch {}
+        }
 
-        setScannerEngine("ZXing");
-      } catch {
-        setIsCameraActive(false);
-        setResult({
-          state: "error",
-          error:
-            "કેમેરા ઍક્સેસ મેળવી શકાયો નથી. કૃપા કરીને બ્રાઉઝરમાં કેમેરાની પરવાનગી આપો અથવા નીચેથી 'મેન્યુઅલ હાજરી' નો ઉપયોગ કરો.",
-        });
-        setBusy(false);
-        return;
+        let usedNative = false;
+
+        // 1. Try Native BarcodeDetector if supported
+        if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+          try {
+            const formats: string[] = await (window as any).BarcodeDetector.getSupportedFormats().catch(() => []);
+            if (Array.isArray(formats) && formats.includes("qr_code")) {
+              const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+              let activeLoop = true;
+              const detectLoop = async () => {
+                if (!activeLoop) return;
+                if (videoRef.current && videoRef.current.readyState >= 2 && !isProcessingRef.current) {
+                  try {
+                    const barcodes = await detector.detect(videoRef.current);
+                    if (barcodes && barcodes.length > 0 && barcodes[0]?.rawValue) {
+                      void processToken(barcodes[0].rawValue);
+                    }
+                  } catch {
+                    // Ignore frame decode errors
+                  }
+                }
+                if (activeLoop) {
+                  animFrameRef.current = requestAnimationFrame(detectLoop);
+                }
+              };
+              animFrameRef.current = requestAnimationFrame(detectLoop);
+              controlsRef.current = {
+                stop: () => {
+                  activeLoop = false;
+                  if (animFrameRef.current) {
+                    cancelAnimationFrame(animFrameRef.current);
+                    animFrameRef.current = null;
+                  }
+                },
+              };
+              usedNative = true;
+            }
+          } catch {
+            usedNative = false;
+          }
+        }
+
+        // 2. Automatic ZXing Fallback using the ALREADY open MediaStream (never opens a conflicting 2nd camera stream!)
+        if (!usedNative) {
+          const { BrowserQRCodeReader } = await import("@zxing/browser");
+          const reader = new BrowserQRCodeReader(undefined, {
+            delayBetweenScanAttempts: 60,
+          });
+          controlsRef.current = await reader.decodeFromStream(
+            stream,
+            videoEl,
+            (decoded) => {
+              if (decoded && !isProcessingRef.current) {
+                void processToken(decoded.getText());
+              }
+            },
+          );
+        }
+
+        setIsCameraActive(true);
+        setCameraError(null);
+      } catch (err) {
+        console.warn("[Scanner Camera Error]:", err);
+        stopCamera();
+        setCameraError("કેમેરા શરૂ થઈ શક્યો નથી. Camera Permission ચેક કરો અથવા Mobile Number દ્વારા શોધો.");
+      } finally {
+        startingCameraRef.current = false;
+        setIsStartingCamera(false);
+      }
+    },
+    [facingMode, processToken, stopCamera],
+  );
+
+  // Handle browser suspend/resume (iOS Safari & Android backgrounding)
+  useEffect(() => {
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        if (isCameraActive) {
+          stopCamera();
+        }
+      } else if (userRequestedCameraRef.current && !isCameraActive && !startingCameraRef.current) {
+        void startCamera();
       }
     }
-
-    setIsCameraActive(true);
-    scanNext();
-    setBusy(false);
-  }, [facingMode, processToken, scanNext]);
-
-  // Auto-start camera when authenticated
-  useEffect(() => {
-    if (session?.authed && !isCameraActive && !controlsRef.current && videoRef.current) {
-      void startCamera();
-    }
-  }, [session?.authed, isCameraActive, startCamera]);
-
-  const stopCamera = useCallback(() => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = null;
-    }
-    if (controlsRef.current) {
-      try {
-        controlsRef.current.stop();
-      } catch {}
-      controlsRef.current = null;
-    }
-    setIsCameraActive(false);
-    isProcessingRef.current = false;
-  }, []);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isCameraActive, startCamera, stopCamera]);
 
   // Toggle torch / flashlight
   async function toggleTorch() {
@@ -488,18 +509,6 @@ export function EventOperatorScannerView({
     }
   }
 
-  // Keyboard shortcut Space / Enter to advance scan
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if ((e.code === "Space" || e.code === "Enter") && result) {
-        e.preventDefault();
-        scanNext();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [result, scanNext]);
-
   // Handle operator sign-in
   async function handleOperatorLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -511,7 +520,7 @@ export function EventOperatorScannerView({
         data: {
           username: username.trim(),
           password,
-          target_event_id: targetEventId || undefined,
+          target_event_id: defaultEventId || undefined,
         },
       });
 
@@ -531,120 +540,135 @@ export function EventOperatorScannerView({
 
   // Handle operator sign-out
   async function handleSignOut() {
+    userRequestedCameraRef.current = false;
     stopCamera();
     await signOutFn();
     setSession({ authed: false });
     setResult(null);
   }
 
-  // Handle manual participant search
+  // Handle manual mobile number search (Universal across all events, never requires targetEventId)
   async function handleManualSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (!searchQuery.trim() || !targetEventId) return;
+    const normalized = normalizeMobileClient(searchQuery);
+    if (!normalized || normalized.length < 2) return;
+
     setSearching(true);
+    setSearchError(null);
+    setHasSearched(true);
+
     try {
       const res = await searchParticipantsFn({
         data: {
-          query: searchQuery.trim(),
-          target_event_id: session?.event_id || targetEventId,
+          query: normalized,
         },
       });
       if (res.ok) {
-        setSearchResults(res.rows);
+        setSearchResults((res.rows as ManualParticipantRow[]) || []);
       } else {
         setSearchResults([]);
+        setSearchError(res.error || "શોધવામાં ક્ષતિ આવી.");
       }
-    } catch {
+    } catch (err) {
       setSearchResults([]);
+      setSearchError(err instanceof Error ? err.message : "શોધવામાં ક્ષતિ આવી.");
     } finally {
       setSearching(false);
     }
   }
 
-  // Handle manual check-in button click
-  async function handleManualMark(regId: string) {
-    if (!targetEventId) return;
-    setMarkingId(regId);
+  // Handle manual check-in button click (One round-trip to existing server-side attendance RPC)
+  async function handleManualMark(row: ManualParticipantRow) {
+    if (markingId) return;
+    setMarkingId(row.id);
+
     try {
       const res = await manualCheckInFn({
         data: {
-          registration_id: regId,
-          target_event_id: session?.event_id || targetEventId,
+          registration_id: row.id,
         },
       });
 
       if (res.ok) {
+        const nextState = res.state === "duplicate" ? "duplicate" : "success";
         setResult({
-          state: res.state === "duplicate" ? "duplicate" : "success",
-          participant_name: res.participant_name,
-          participant_id: res.participant_id,
+          state: nextState,
+          participant_name: res.participant_name || row.full_name,
+          participant_id: res.participant_id || row.registration_number,
+          event_id: res.event_id || row.event_id,
+          event_title: res.event_title || row.event_title,
+          district: res.district || row.district,
           check_in_time: res.check_in_time,
+          present_count: res.present_count,
+          scan_count: res.scan_count,
         });
 
-        if (soundEnabled) {
-          playSound(res.state === "duplicate" ? "duplicate" : "success");
+        // Update local search result row immediately so UI reflects attendance without extra network calls
+        setSearchResults((prev) =>
+          prev.map((item) =>
+            item.id === row.id
+              ? { ...item, is_attended: true, check_in_time: res.check_in_time }
+              : item,
+          ),
+        );
+
+        if (res.present_count !== undefined && res.scan_count !== undefined) {
+          setSession((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  present_count: res.present_count,
+                  scan_count: res.scan_count,
+                }
+              : prev,
+          );
         }
 
-        // Close manual drawer
-        setManualDrawerOpen(false);
-        setSearchQuery("");
-        setSearchResults([]);
-        // Re-verify counts
-        void verifyAuth();
+        if (soundEnabled) {
+          playSound(nextState);
+        }
       } else {
         setResult({ state: "error", error: res.error });
+        if (soundEnabled) playSound("error");
       }
     } catch (err) {
       setResult({
         state: "error",
         error: err instanceof Error ? err.message : "મેન્યુઅલ હાજરી નોંધવામાં ક્ષતિ આવી.",
       });
+      if (soundEnabled) playSound("error");
     } finally {
       setMarkingId(null);
     }
   }
 
-  // Loading state
-  if (isConfigLoading || isCheckingAuth) {
+  // Initial lightweight auth check spinner
+  if (isCheckingAuth) {
     return (
-      <div className="flex min-h-[80vh] flex-col items-center justify-center p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-[#0F3E3E]" />
-        <p className="mt-3 text-sm font-medium text-stone-600">સ્કેનર કન્સોલ લોડ થઈ રહ્યું છે...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#0F172A] p-4 text-white">
+        <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+        <p className="mt-3 text-sm font-semibold text-slate-200">યોગ શિબિર હાજરી લોડ થઈ રહ્યું છે...</p>
       </div>
     );
   }
-
-  const eventTitle =
-    session?.event_title ||
-    config?.general?.title ||
-    (districtName ? `${districtName} યોગ શિબિર` : "ગુજરાત રાજ્ય યોગ બોર્ડ શિબિર");
 
   // =========================================================================
   // VIEW 1: UNAUTHENTICATED OPERATOR LOGIN SCREEN
   // =========================================================================
   if (!session?.authed) {
     return (
-      <div className="min-h-screen bg-[#FAF8F5] flex flex-col justify-center items-center px-4 py-8">
+      <div className="min-h-screen bg-[#FAF8F5] flex flex-col justify-center items-center px-4 py-6">
         <div className="w-full max-w-sm">
-          {/* Official Emblem & Event Header */}
-          <div className="text-center mb-6">
-            <img
-              src="/logo-gsyb.png"
-              alt="GSYB Emblem"
-              className="w-16 h-16 mx-auto mb-2 object-contain drop-shadow-xs"
-            />
-            <p className="text-xs font-bold text-[#0F3E3E] uppercase tracking-wider mb-2">
+          <div className="text-center mb-5">
+            <p className="text-xs font-bold text-[#0F3E3E] uppercase tracking-wider mb-1">
               GUJARAT STATE YOG BOARD
             </p>
             <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200/60 mb-3">
-              <span className="text-[10px] font-bold text-[#5C7065] uppercase tracking-wider block">
-                Digital ID Card Scanner
-              </span>
-              <h1 className="text-sm sm:text-base font-extrabold text-[#0F3E3E] leading-snug mt-0.5">
-                {eventSlug && districtName ? `${districtName} યોગ શિબિર` : "સર્વ શિબિર સ્કેનર કન્સોલ"}
+              <h1 className="text-base font-extrabold text-[#0F3E3E] leading-snug">
+                યોગ શિબિર હાજરી
               </h1>
-              <span className="text-[10px] text-emerald-700 font-medium block mt-0.5">
-                Universal Multi-Event Gate Entry
+              <span className="text-[11px] text-emerald-700 font-medium block mt-0.5">
+                Universal Multi-Event Attendance Scanner
               </span>
             </div>
             <h2 className="text-sm font-extrabold text-[#1C2623] tracking-tight">
@@ -655,8 +679,7 @@ export function EventOperatorScannerView({
             </p>
           </div>
 
-          {/* Login Card */}
-          <div className="bg-white rounded-2xl border border-[#E8E0D5] p-6 shadow-sm">
+          <div className="bg-white rounded-2xl border border-[#E8E0D5] p-5 shadow-sm">
             {loginError && (
               <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-rose-800 text-xs">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
@@ -666,12 +689,10 @@ export function EventOperatorScannerView({
 
             <form onSubmit={handleOperatorLogin} className="space-y-4">
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-[#0F3E3E]">
-                  Username
-                </Label>
+                <Label className="text-xs font-bold text-[#0F3E3E]">Username</Label>
                 <Input
                   type="text"
-                  placeholder="e.g. patan_gate1 or SCN-5FAC1DDD"
+                  placeholder="e.g. SCN-5FAC1DDD"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="h-11 text-xs border-[#D9D0C5] focus:border-[#0F3E3E] rounded-xl"
@@ -683,9 +704,7 @@ export function EventOperatorScannerView({
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-[#0F3E3E]">
-                    Scanner Key / Password
-                  </Label>
+                  <Label className="text-xs font-bold text-[#0F3E3E]">Scanner Key / Password</Label>
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
@@ -708,12 +727,12 @@ export function EventOperatorScannerView({
               <Button
                 type="submit"
                 disabled={isLoggingIn || !username.trim() || !password}
-                className="w-full h-11 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-bold text-xs rounded-xl shadow-xs gap-2 transition-all active:scale-[0.99] tracking-wider uppercase"
+                className="w-full h-11 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-bold text-xs rounded-xl shadow-xs gap-2"
               >
                 {isLoggingIn ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Verifying credentials...</span>
+                    <span>Verifying...</span>
                   </>
                 ) : (
                   <>
@@ -723,12 +742,6 @@ export function EventOperatorScannerView({
                 )}
               </Button>
             </form>
-
-            <div className="mt-5 pt-4 border-t border-[#F0EAE1] text-center">
-              <p className="text-[11px] text-[#78887F] leading-relaxed">
-                નોંધ: આ સ્કેનર ક્રેડેન્શિયલ્સ તમામ શિબિરો માટે માન્ય છે. QR કોડના આધારે હાજરી આપોઆપ યોગ્ય શિબિરમાં નોંધાશે.
-              </p>
-            </div>
           </div>
         </div>
       </div>
@@ -736,54 +749,52 @@ export function EventOperatorScannerView({
   }
 
   // =========================================================================
-  // VIEW 2: AUTHENTICATED SCANNER OPERATOR CONSOLE (MOBILE OPTIMIZED 390PX)
+  // VIEW 2: AUTHENTICATED MOBILE-FIRST SCANNER & MANUAL ATTENDANCE CONSOLE
   // =========================================================================
   return (
-    <div className="min-h-screen bg-[#0F172A] text-white flex flex-col select-none">
-      {/* Top Header Bar */}
-      <header className="bg-[#0A101D] border-b border-slate-800 px-3 py-2.5 flex items-center justify-between gap-2 shrink-0 z-20">
-        <div className="flex items-center gap-2 overflow-hidden">
-          <img src="/logo-gsyb.png" alt="Emblem" className="w-7 h-7 object-contain shrink-0" />
+    <div className="min-h-screen bg-[#0F172A] text-white flex flex-col">
+      {/* Top Header Bar: "યોગ શિબિર હાજરી" */}
+      <header className="bg-[#0A101D] border-b border-slate-800 px-3 py-2.5 flex items-center justify-between gap-2 shrink-0 sticky top-0 z-30">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0" />
           <div className="truncate">
-            <h1 className="text-xs font-bold text-white truncate leading-tight">
-              Digital ID Card Scanner
+            <h1 className="text-sm font-extrabold text-white truncate leading-tight">
+              યોગ શિબિર હાજરી
             </h1>
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
-              <span className="text-emerald-400 font-medium">● સક્રિય</span>
-              <span>&bull;</span>
-              <span className="text-slate-300 font-semibold truncate">
-                {session.operator_name || session.scanner_name}
-              </span>
-              {districtName && (
-                <>
-                  <span>&bull;</span>
-                  <span className="text-emerald-300 font-medium truncate">
-                    {districtName}
-                  </span>
-                </>
-              )}
-            </div>
+            <p className="text-[10px] text-slate-400 truncate">
+              {session.operator_name || session.scanner_name || "Operator"} &bull; સર્વ શિબિર સ્કેનર
+            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Live Scans Counter Pill */}
-          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 px-2.5 py-1 rounded-full text-[11px] font-mono">
+          <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 px-2.5 py-1 rounded-full text-[11px] font-mono">
             <span className="text-emerald-400 font-bold">{session.scan_count ?? 0}</span>
-            <span className="text-slate-400 text-[10px]">કુલ સ્કેન</span>
+            <span className="text-slate-400 text-[10px]">હાજરી</span>
           </div>
 
           <button
+            type="button"
+            onClick={() => setSoundEnabled((prev) => !prev)}
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
+            title="અવાજ"
+          >
+            {soundEnabled ? <Volume2 className="w-3.5 h-3.5 text-emerald-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
+          </button>
+
+          <button
+            type="button"
             onClick={() => void verifyAuth()}
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
-            title="રિફ્રેશ કાઉન્ટર"
+            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
+            title="રિફ્રેશ"
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
 
           <button
+            type="button"
             onClick={handleSignOut}
-            className="p-1.5 rounded-lg bg-rose-950/60 border border-rose-800/40 text-rose-300 hover:bg-rose-900 transition-colors"
+            className="p-1.5 rounded-lg bg-rose-950/60 border border-rose-800/40 text-rose-300 hover:bg-rose-900"
             title="લોગઆઉટ"
           >
             <LogOut className="w-3.5 h-3.5" />
@@ -791,124 +802,41 @@ export function EventOperatorScannerView({
         </div>
       </header>
 
-      {/* Main Scanner Container (Full-height continuous camera) */}
-      <div className="relative flex-1 flex flex-col justify-center items-center overflow-hidden bg-black">
-        {/* Continuous Video Feed (NEVER unmounted) */}
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          autoPlay
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-
-        {/* Semi-transparent dark overlay framing the scanner box */}
-        <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-          {/* Target Viewfinder Box (Substantially larger: 86vw up to 340px) */}
-          <div className="relative w-[86vw] max-w-[340px] aspect-square rounded-3xl border-2 border-emerald-400/90 shadow-[0_0_35px_rgba(16,185,129,0.35)] flex items-center justify-center overflow-hidden">
-            {/* Animated Laser Scan Line */}
-            <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-[scanLaser_2.0s_ease-in-out_infinite]" />
-
-            {/* Corner Bracket Accents (Prominent & Clear) */}
-            <div className="absolute top-0 left-0 w-7 h-7 border-t-4 border-l-4 border-emerald-400 rounded-tl-xl" />
-            <div className="absolute top-0 right-0 w-7 h-7 border-t-4 border-r-4 border-emerald-400 rounded-tr-xl" />
-            <div className="absolute bottom-0 left-0 w-7 h-7 border-b-4 border-l-4 border-emerald-400 rounded-bl-xl" />
-            <div className="absolute bottom-0 right-0 w-7 h-7 border-b-4 border-r-4 border-emerald-400 rounded-br-xl" />
-
-            {busy && (
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex flex-col items-center justify-center text-white">
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
-                <span className="text-xs font-semibold mt-2">ચકાસી રહ્યું છે...</span>
-              </div>
-            )}
-          </div>
-
-          <p className="text-slate-200 text-xs font-semibold mt-4 tracking-wide text-center px-4 drop-shadow-md">
-            આઈડી કાર્ડનો QR કોડ કેમેરા સામે રાખો
-          </p>
-        </div>
-
-        {/* Camera Controls Floating Bar */}
-        <div className="absolute top-3 inset-x-0 flex justify-center gap-3 z-10">
-          <button
-            onClick={() => {
-              setFacingMode((prev) => (prev === "environment" ? "user" : "environment"));
-              setTimeout(() => void startCamera(), 100);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-slate-700 text-slate-200 text-xs font-medium shadow-md active:scale-95 transition-all"
-          >
-            <SwitchCamera className="w-3.5 h-3.5 text-emerald-400" />
-            <span>કેમેરા બદલો</span>
-          </button>
-
-          {torchSupported && (
-            <button
-              onClick={toggleTorch}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-md border text-xs font-medium shadow-md active:scale-95 transition-all ${
-                torchEnabled
-                  ? "bg-amber-500 border-amber-400 text-black font-bold"
-                  : "bg-slate-900/85 border-slate-700 text-slate-200"
-              }`}
-            >
-              {torchEnabled ? <Flashlight className="w-3.5 h-3.5" /> : <FlashlightOff className="w-3.5 h-3.5" />}
-              <span>{torchEnabled ? "ટોર્ચ ચાલુ" : "ટોર્ચ"}</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => setSoundEnabled((prev) => !prev)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/85 backdrop-blur-md border border-slate-700 text-slate-200 text-xs font-medium shadow-md active:scale-95 transition-all"
-          >
-            {soundEnabled ? (
-              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
-            ) : (
-              <VolumeX className="w-3.5 h-3.5 text-slate-400" />
-            )}
-            <span>{soundEnabled ? "અવાજ ચાલુ" : "મ્યૂટ"}</span>
-          </button>
-        </div>
-
-        {/* Result Feedback Banner (Slide-up overlay card) */}
+      {/* Main Content Area: Primary Camera Scanner + Secondary Manual Mobile Lookup */}
+      <main className="flex-1 w-full max-w-md mx-auto px-3 py-3 space-y-3">
+        {/* LIVE RESULT BANNER (Immediate feedback for both QR and Manual Check-In) */}
         {result && (
           <div
             onClick={scanNext}
-            className="absolute inset-x-3 bottom-16 sm:bottom-20 z-30 cursor-pointer animate-in fade-in slide-in-from-bottom-6 duration-200"
+            className="cursor-pointer rounded-2xl shadow-xl transition-all"
+            data-testid="attendance-result-banner"
           >
-            {/* SUCCESS STATE */}
             {result.state === "success" && (
-              <div className="bg-emerald-950/95 border-2 border-emerald-400 text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md">
+              <div className="bg-emerald-950 border-2 border-emerald-400 text-white p-3.5 rounded-2xl">
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500 text-black flex items-center justify-center shrink-0">
                     <CheckCircle2 className="w-6 h-6 stroke-[2.5]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                        ✅ હાજરી સફળ થઈ (PRESENT)
-                      </span>
-                    </div>
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-400 block">
+                      ✅ હાજરી સફળતાપૂર્વક નોંધાઈ
+                    </span>
                     <h3 className="text-base font-extrabold text-white truncate mt-0.5">
                       {result.participant_name}
                     </h3>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-xs font-mono text-emerald-200 font-bold bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-500/40">
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-xs font-mono text-emerald-200 font-bold bg-emerald-900/70 px-2 py-0.5 rounded border border-emerald-500/40">
                         {result.participant_id}
                       </span>
                       {result.district && (
-                        <span className="px-2 py-0.5 rounded bg-emerald-500 text-black text-[10px] font-extrabold uppercase tracking-wider">
+                        <span className="px-2 py-0.5 rounded bg-emerald-500 text-black text-[10px] font-extrabold">
                           📍 {result.district}
                         </span>
                       )}
-                      {result.event_title && (
-                        <span className="text-xs text-emerald-200 font-semibold truncate max-w-[200px]">
-                          {result.event_title}
-                        </span>
-                      )}
                     </div>
-                    {result.check_in_time && (
-                      <p className="text-[10px] text-emerald-300/80 mt-1.5 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        <span>સમય: {new Date(result.check_in_time).toLocaleTimeString("en-IN")}</span>
+                    {result.event_title && (
+                      <p className="text-xs text-emerald-200 font-semibold mt-1 truncate">
+                        {result.event_title}
                       </p>
                     )}
                   </div>
@@ -916,40 +844,37 @@ export function EventOperatorScannerView({
               </div>
             )}
 
-            {/* DUPLICATE STATE */}
             {result.state === "duplicate" && (
-              <div className="bg-amber-950/95 border-2 border-amber-400 text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md">
+              <div className="bg-amber-950 border-2 border-amber-400 text-white p-3.5 rounded-2xl">
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-amber-500 text-black flex items-center justify-center shrink-0">
                     <AlertTriangle className="w-6 h-6 stroke-[2.5]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
-                        ⚠️ પહેલાંથી હાજર થયેલ છે
-                      </span>
-                    </div>
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-amber-400 block">
+                      ⚠️ હાજરી પહેલેથી નોંધાઈ છે
+                    </span>
                     <h3 className="text-base font-extrabold text-white truncate mt-0.5">
                       {result.participant_name}
                     </h3>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-xs font-mono text-amber-200 font-bold bg-amber-900/60 px-2 py-0.5 rounded border border-amber-500/40">
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-xs font-mono text-amber-200 font-bold bg-amber-900/70 px-2 py-0.5 rounded border border-amber-500/40">
                         {result.participant_id}
                       </span>
                       {result.district && (
-                        <span className="px-2 py-0.5 rounded bg-amber-500 text-black text-[10px] font-extrabold uppercase tracking-wider">
+                        <span className="px-2 py-0.5 rounded bg-amber-500 text-black text-[10px] font-extrabold">
                           📍 {result.district}
                         </span>
                       )}
-                      {result.event_title && (
-                        <span className="text-xs text-amber-200 font-semibold truncate max-w-[200px]">
-                          {result.event_title}
-                        </span>
-                      )}
                     </div>
+                    {result.event_title && (
+                      <p className="text-xs text-amber-200 font-semibold mt-1 truncate">
+                        {result.event_title}
+                      </p>
+                    )}
                     {result.check_in_time && (
-                      <p className="text-[10px] text-amber-200 mt-1.5 flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-amber-400" />
+                      <p className="text-[10px] text-amber-300 mt-1 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
                         <span>
                           પ્રથમ હાજરી:{" "}
                           {new Date(result.check_in_time).toLocaleTimeString("en-IN", {
@@ -965,132 +890,243 @@ export function EventOperatorScannerView({
               </div>
             )}
 
-            {/* INVALID / CROSS-EVENT / ERROR STATE */}
             {(result.state === "invalid" || result.state === "error" || result.state === "unauthorized") && (
-              <div className="bg-rose-950/95 border-2 border-rose-400 text-white p-4 rounded-2xl shadow-2xl backdrop-blur-md">
+              <div className="bg-rose-950 border-2 border-rose-400 text-white p-3.5 rounded-2xl">
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-10 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0">
                     <XCircle className="w-6 h-6 stroke-[2.5]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400">
-                        {result.code === "PLAIN_REGISTRATION_NUMBER"
-                          ? "સાદો નંબર સ્કેન અમાન્ય"
-                          : result.code === "CROSS_EVENT"
-                          ? "અન્ય શિબિરનો QR"
-                          : "અમાન્ય QR કોડ"}
-                      </span>
-                      {autoResumeSeconds !== null && (
-                        <span className="text-[10px] font-mono text-rose-300/80">
-                          આગામી સ્કેન {autoResumeSeconds} સે...
-                        </span>
-                      )}
-                    </div>
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-rose-400 block">
+                      {result.code === "PLAIN_REGISTRATION_NUMBER" ? "સાદો નંબર સ્કેન અમાન્ય" : "અમાન્ય QR કોડ"}
+                    </span>
                     <p className="text-xs font-medium text-rose-100 leading-relaxed mt-1">
                       {result.error || "અમાન્ય અથવા મેળ ન ખાતો QR કોડ."}
                     </p>
-                    {result.code === "PLAIN_REGISTRATION_NUMBER" && (
-                      <p className="text-[10px] text-rose-300 mt-1 font-semibold">
-                        👉 નીચેથી &quot;મેન્યુઅલ હાજરી&quot; બટન દબાવીને હાજરી પૂરી શકો છો.
-                      </p>
-                    )}
                   </div>
                 </div>
               </div>
             )}
           </div>
         )}
-      </div>
 
-      {/* Bottom Bar: Manual Search Action & Recent Activity Drawer */}
-      <footer className="bg-[#0A101D] border-t border-slate-800 p-3 flex items-center justify-between gap-2 shrink-0 z-20">
-        <Button
-          onClick={() => setManualDrawerOpen(true)}
-          className="flex-1 h-11 bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold text-xs rounded-xl border border-slate-700 gap-2 active:scale-98 transition-all"
-        >
-          <Search className="w-4 h-4 text-amber-400" />
-          <span>મેન્યુઅલ હાજરી શોધો (નામ / મોબાઈલ / નંબર)</span>
-        </Button>
-      </footer>
+        {/* PRIMARY SECTION: CAMERA QR SCANNER */}
+        <section className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden shadow-lg">
+          <div className="relative w-full aspect-[4/3] max-h-[270px] bg-black flex flex-col items-center justify-center overflow-hidden">
+            {/* Video Element (Always mounted for safe ref binding) */}
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              className={`absolute inset-0 w-full h-full object-cover ${isCameraActive ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            />
 
-      {/* =====================================================================
-          MANUAL LOOKUP DRAWER (SEARCH & EXPLICIT ATTENDANCE CONFIRMATION)
-          ===================================================================== */}
-      {manualDrawerOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex flex-col justify-end">
-          <div
-            className="bg-[#FAF8F5] text-slate-900 rounded-t-3xl max-h-[85vh] flex flex-col shadow-2xl border-t border-[#E8E0D5] animate-in slide-in-from-bottom duration-200"
-          >
-            {/* Drawer Header */}
-            <div className="p-4 border-b border-[#E8E0D5] flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-extrabold text-[#0F3E3E]">
-                  મેન્યુઅલ હાજરી શોધો
-                </h3>
-                <p className="text-[11px] text-[#5C7065] mt-0.5">
-                  નામ, મોબાઈલ અથવા રજીસ્ટ્રેશન નંબર દાખલ કરી હાજરી નોંધો.
-                </p>
-              </div>
-              <button
-                onClick={() => setManualDrawerOpen(false)}
-                className="w-8 h-8 rounded-full bg-stone-200 hover:bg-stone-300 flex items-center justify-center text-stone-600 transition-colors"
-              >
-                ✕
-              </button>
-            </div>
+            {isCameraActive ? (
+              <>
+                {/* Viewfinder Frame */}
+                <div className="relative w-48 h-48 rounded-2xl border-2 border-emerald-400/90 shadow-[0_0_25px_rgba(16,185,129,0.25)] pointer-events-none flex items-center justify-center">
+                  <div className="absolute top-0 left-0 w-5 h-5 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
+                  <div className="absolute top-0 right-0 w-5 h-5 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
+                  <div className="absolute bottom-0 left-0 w-5 h-5 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
+                  <div className="absolute bottom-0 right-0 w-5 h-5 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
+                  {busy && (
+                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center">
+                      <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+                      <span className="text-[11px] font-semibold mt-1">ચકાસી રહ્યું છે...</span>
+                    </div>
+                  )}
+                </div>
 
-            {/* Search Input Box */}
-            <div className="p-4 bg-white border-b border-[#E8E0D5]">
-              <form onSubmit={handleManualSearch} className="flex gap-2">
-                <Input
-                  type="text"
-                  placeholder="નામ, મોબાઈલ (૧૦ અંક), અથવા PAT000177..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-11 text-xs border-[#D9D0C5] focus:border-[#0F3E3E] rounded-xl flex-1 text-black"
-                  autoFocus
-                />
+                {/* Active Camera Controls */}
+                <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between gap-2 z-10">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextMode = facingMode === "environment" ? "user" : "environment";
+                      setFacingMode(nextMode);
+                      void startCamera(nextMode);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-900/85 border border-slate-700 text-slate-200 text-[11px] font-semibold"
+                  >
+                    <SwitchCamera className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>કેમેરા બદલો</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    {torchSupported && (
+                      <button
+                        type="button"
+                        onClick={toggleTorch}
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full border text-[11px] font-semibold ${
+                          torchEnabled
+                            ? "bg-amber-500 border-amber-400 text-black font-bold"
+                            : "bg-slate-900/85 border-slate-700 text-slate-200"
+                        }`}
+                      >
+                        {torchEnabled ? <Flashlight className="w-3.5 h-3.5" /> : <FlashlightOff className="w-3.5 h-3.5" />}
+                        <span>ટોર્ચ</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        userRequestedCameraRef.current = false;
+                        stopCamera();
+                      }}
+                      className="px-2.5 py-1.5 rounded-full bg-rose-950/85 border border-rose-700/60 text-rose-200 text-[11px] font-semibold"
+                    >
+                      બંધ કરો
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Idle / Error Camera Startup Prompt */
+              <div className="p-4 text-center flex flex-col items-center justify-center max-w-xs z-10">
+                {cameraError ? (
+                  <div
+                    className="mb-3 p-3 rounded-xl bg-rose-950/90 border border-rose-500/60 text-rose-100 text-xs leading-relaxed font-medium"
+                    data-testid="camera-error-message"
+                  >
+                    {cameraError}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-300 mb-3 font-medium">
+                    QR કોડ સ્કેન કરવા માટે કેમેરા શરૂ કરો
+                  </p>
+                )}
+
                 <Button
-                  type="submit"
-                  disabled={searching || !searchQuery.trim()}
-                  className="h-11 px-4 bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white font-bold text-xs rounded-xl"
+                  type="button"
+                  disabled={isStartingCamera}
+                  onClick={() => void startCamera()}
+                  data-testid="start-camera-button"
+                  className="h-11 px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl gap-2 shadow-md"
                 >
-                  {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  {isStartingCamera ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>કેમેરા શરૂ થઈ રહ્યો છે...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Camera className="w-4 h-4" />
+                      <span>કેમેરા શરૂ કરો</span>
+                    </>
+                  )}
                 </Button>
-              </form>
-            </div>
+              </div>
+            )}
+          </div>
+        </section>
 
-            {/* Search Results List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+        {/* SECONDARY SECTION: MANUAL MOBILE NUMBER LOOKUP ("Mobile Number થી શોધો") */}
+        <section
+          className="rounded-2xl bg-slate-900 border border-slate-800 p-3.5 space-y-3 shadow-lg"
+          data-testid="manual-mobile-section"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Phone className="w-4 h-4 text-amber-400 shrink-0" />
+              <h2 className="text-xs sm:text-sm font-extrabold text-white">
+                Mobile Number થી શોધો
+              </h2>
+            </div>
+            <span className="text-[10px] text-slate-400">
+              10-અંકનો મોબાઈલ નંબર
+            </span>
+          </div>
+
+          <form onSubmit={handleManualSearch} className="flex gap-2">
+            <Input
+              ref={mobileInputRef}
+              type="tel"
+              inputMode="tel"
+              placeholder="મોબાઈલ નંબર લખો (દા.ત. 9876543210)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              data-testid="manual-mobile-input"
+              className="h-11 text-sm bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-400 rounded-xl flex-1 font-mono"
+            />
+            <Button
+              type="submit"
+              disabled={searching || !searchQuery.trim()}
+              data-testid="manual-search-button"
+              className="h-11 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl gap-1.5 shrink-0"
+            >
+              {searching ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>શોધી રહ્યા છીએ...</span>
+                </>
+              ) : (
+                <>
+                  <Search className="w-4 h-4" />
+                  <span>શોધો</span>
+                </>
+              )}
+            </Button>
+          </form>
+
+          {searchError && (
+            <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-700/60 text-rose-200 text-xs">
+              {searchError}
+            </div>
+          )}
+
+          {/* Multiple registrations notice */}
+          {searchResults.length > 1 && (
+            <p className="text-[11px] font-semibold text-amber-300 px-1">
+              આ મોબાઈલ નંબર પર {searchResults.length} રજીસ્ટ્રેશન મળ્યા છે — શિબિર પસંદ કરી Check In કરો:
+            </p>
+          )}
+
+          {/* Matching Registration(s) List */}
+          {searchResults.length > 0 && (
+            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-0.5">
               {searchResults.map((r) => (
                 <div
                   key={r.id}
-                  className="p-3.5 rounded-xl bg-white border border-[#E8E0D5] shadow-2xs flex items-center justify-between gap-3"
+                  data-testid={`manual-result-${r.registration_number}`}
+                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2.5"
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-xs font-bold text-[#0F3E3E] truncate">
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="text-xs sm:text-sm font-extrabold text-white truncate">
                         {r.full_name}
-                      </h4>
+                      </h3>
                       {r.is_attended && (
-                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                          હાજર
+                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
+                          હાજરી પહેલેથી નોંધાઈ છે
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] font-mono text-[#5C7065] mt-0.5">
-                      <span>{r.registration_number}</span>
-                      <span>&bull;</span>
-                      <span>{r.mobile}</span>
+
+                    <p className="text-xs font-bold text-emerald-400 truncate">
+                      {r.event_title}
+                    </p>
+
+                    <div className="flex items-center gap-2 text-[11px] text-slate-300 flex-wrap">
+                      <span className="font-mono font-bold text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                        {r.registration_number}
+                      </span>
+                      {r.district && (
+                        <span className="text-slate-400 truncate">
+                          📍 {r.district}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <Button
+                    type="button"
                     size="sm"
                     disabled={markingId === r.id}
-                    onClick={() => handleManualMark(r.id)}
-                    className={`h-9 px-3 rounded-lg text-xs font-bold gap-1 ${
+                    onClick={() => void handleManualMark(r)}
+                    data-testid={`manual-checkin-${r.registration_number}`}
+                    className={`h-10 px-3.5 rounded-xl text-xs font-extrabold gap-1.5 shrink-0 ${
                       r.is_attended
                         ? "bg-amber-600 hover:bg-amber-500 text-white"
                         : "bg-emerald-600 hover:bg-emerald-500 text-white"
@@ -1101,26 +1137,23 @@ export function EventOperatorScannerView({
                     ) : (
                       <UserCheck className="w-3.5 h-3.5" />
                     )}
-                    <span>{r.is_attended ? "ફરી ચકાસો" : "હાજરી પૂરો"}</span>
+                    <span>{r.is_attended ? "Check In" : "Check In"}</span>
                   </Button>
                 </div>
               ))}
-
-              {searchQuery && !searching && searchResults.length === 0 && (
-                <div className="p-8 text-center text-stone-400 text-xs">
-                  કોઈ ભાગ લેનાર મળ્યા નથી.
-                </div>
-              )}
-
-              {!searchQuery && (
-                <div className="p-8 text-center text-stone-400 text-xs">
-                  ભાગ લેનારનું નામ, મોબાઈલ અથવા રજીસ્ટ્રેશન નંબર લખીને સર્ચ કરો.
-                </div>
-              )}
             </div>
-          </div>
-        </div>
-      )}
+          )}
+
+          {hasSearched && !searching && searchResults.length === 0 && !searchError && (
+            <div
+              className="p-4 text-center rounded-xl bg-slate-950 border border-slate-800 text-slate-400 text-xs"
+              data-testid="manual-no-results"
+            >
+              આ મોબાઈલ નંબર સાથે કોઈ રજીસ્ટ્રેશન મળ્યું નથી.
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }

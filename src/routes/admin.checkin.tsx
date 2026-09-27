@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect } from "react";
 import { BRAND } from "@/lib/brand";
-import { GenericScannerView } from "@/components/pages/generic-scanner-view";
+import { EventOperatorScannerView } from "@/components/pages/event-operator-scanner-view";
 import { adminCheck } from "@/lib/registration.functions";
 
 export const Route = createFileRoute("/admin/checkin")({
@@ -16,13 +16,11 @@ export const Route = createFileRoute("/admin/checkin")({
   component: CheckinRoutePage,
 });
 
-export function CheckinPage({ eventId }: { eventId?: string } = {}) {
-  const search = Route.useSearch?.() as { event?: string } | undefined;
-  return <GenericScannerView defaultEventId={eventId || search?.event} />;
+export function CheckinPage({ eventId: _eventId }: { eventId?: string } = {}) {
+  return <EventOperatorScannerView />;
 }
 
 function CheckinRoutePage() {
-  const search = Route.useSearch?.() as { event?: string } | undefined;
   const navigate = useNavigate();
   const check = useServerFn(adminCheck);
   const { data } = useQuery({
@@ -40,5 +38,5 @@ function CheckinRoutePage() {
     return null;
   }
 
-  return <GenericScannerView defaultEventId={search?.event} />;
+  return <EventOperatorScannerView />;
 }
