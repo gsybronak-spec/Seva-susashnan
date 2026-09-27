@@ -3,7 +3,7 @@ import { useSession } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
 
-import { VADODARA_EVENT_ID } from "@/lib/event-config";
+import { VADODARA_EVENT_ID, isEventAttendanceClosed } from "@/lib/event-config";
 
 const scannerSessionConfig = () => {
   const password = process.env.SESSION_SECRET;
@@ -974,33 +974,15 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
     // The participant's actual event from the registration is authoritative!
     const participantEventId = reg.event_id;
 
-    const meta = requestMeta();
-    const [rpcResult, eventRowRes] = await Promise.all([
-      (supabaseAdmin.rpc as any)("record_event_checkin", {
-        _event_id: participantEventId,
-        _registration_id: reg.id,
-        _method: "qr",
-        _scanner_id: scannerId ?? null,
-        _checked_in_by: adminUserId || session.data.operatorName || session.data.scannerName || "operator",
-        _payload_hash: payloadHash,
-        _ip: meta.ip,
-        _user_agent: meta.userAgent,
-      }),
-      supabaseAdmin
-        .from("events")
-        .select("general, district")
-        .eq("id", participantEventId)
-        .maybeSingle(),
-    ]);
+    // Fetch event first to enforce attendance cutoff before writing attendance
+    const { data: eventRow } = await supabaseAdmin
+      .from("events")
+      .select("id, slug, event_date, event_time, lifecycle_status, status, general, district")
+      .eq("id", participantEventId)
+      .maybeSingle();
 
-    if (rpcResult.error || !rpcResult.data?.[0]) {
-      console.error("[operatorCheckIn] RPC error:", rpcResult.error);
-      return { ok: false as const, state: "error" as const, error: "હાજરી નોંધવામાં ક્ષતિ આવી. ફરી પ્રયાસ કરો." };
-    }
-
-    const result = rpcResult.data[0] as { result: string; original_check_in: string };
-    const eventGeneral = (eventRowRes.data?.general ?? {}) as Record<string, unknown>;
-    const eventDistrict = (eventRowRes.data?.district as string) || "";
+    const eventGeneral = (eventRow?.general ?? {}) as Record<string, unknown>;
+    const eventDistrict = (eventRow?.district as string) || "";
     const cf = (reg.custom_fields ?? {}) as Record<string, unknown>;
     const participantArea =
       (reg.district && reg.district.trim()) ||
@@ -1011,6 +993,39 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
     const eventTitle =
       (eventGeneral.title as string) ||
       (eventDistrict ? `${eventDistrict} યોગ શિબિર` : "Gujarat State Yog Board Event");
+
+    if (eventRow && isEventAttendanceClosed(eventRow as any)) {
+      return {
+        ok: false as const,
+        state: "closed" as const,
+        code: "ATTENDANCE_CLOSED" as const,
+        participant_name: reg.full_name,
+        participant_id: reg.registration_number,
+        event_id: participantEventId,
+        event_title: eventTitle,
+        district: participantArea,
+        error: "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે. (Attendance Closed / Event Completed)",
+      };
+    }
+
+    const meta = requestMeta();
+    const rpcResult = await (supabaseAdmin.rpc as any)("record_event_checkin", {
+      _event_id: participantEventId,
+      _registration_id: reg.id,
+      _method: "qr",
+      _scanner_id: scannerId ?? null,
+      _checked_in_by: adminUserId || session.data.operatorName || session.data.scannerName || "operator",
+      _payload_hash: payloadHash,
+      _ip: meta.ip,
+      _user_agent: meta.userAgent,
+    });
+
+    if (rpcResult.error || !rpcResult.data?.[0]) {
+      console.error("[operatorCheckIn] RPC error:", rpcResult.error);
+      return { ok: false as const, state: "error" as const, error: "હાજરી નોંધવામાં ક્ષતિ આવી. ફરી પ્રયાસ કરો." };
+    }
+
+    const result = rpcResult.data[0] as { result: string; original_check_in: string };
 
     // Fetch updated live counts for this participant's event and operator's total scans
     const [totalAttendedRes, operatorScansRes] = await Promise.all([
@@ -1143,7 +1158,7 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
       eventIds.length > 0
         ? supabaseAdmin
             .from("events")
-            .select("id, slug, district, general")
+            .select("id, slug, district, event_date, event_time, lifecycle_status, status, general")
             .in("id", eventIds)
         : Promise.resolve({ data: [] }),
     ]);
@@ -1153,14 +1168,18 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
       if (a.registration_id) attendedMap.set(a.registration_id, a.check_in_time);
     });
 
-    const eventMap = new Map<string, { title: string; district: string }>();
+    const eventMap = new Map<string, { title: string; district: string; attendance_closed: boolean }>();
     (eventsRes.data ?? []).forEach((ev: any) => {
       const gen = (ev.general ?? {}) as Record<string, unknown>;
       const dist = (ev.district as string) || "";
       const title =
         (typeof gen.title === "string" && gen.title.trim()) ||
         (dist ? `${dist} યોગ શિબિર` : "ગુજરાત રાજ્ય યોગ બોર્ડ યોગ શિબિર");
-      eventMap.set(ev.id, { title, district: dist });
+      eventMap.set(ev.id, {
+        title,
+        district: dist,
+        attendance_closed: isEventAttendanceClosed(ev as any),
+      });
     });
 
     return {
@@ -1186,6 +1205,7 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
           custom_fields: r.custom_fields,
           is_attended: attendedMap.has(r.id),
           check_in_time: attendedMap.get(r.id) ?? null,
+          attendance_closed: evInfo?.attendance_closed ?? false,
         };
       }),
     };
@@ -1236,32 +1256,14 @@ export const operatorManualCheckIn = createServerFn({ method: "POST" })
       return { ok: false as const, error: "ભાગ લેનાર મળ્યા નથી." };
     }
 
-    const meta = requestMeta();
-    const [rpcResult, eventRowRes] = await Promise.all([
-      (supabaseAdmin.rpc as any)("record_event_checkin", {
-        _event_id: reg.event_id,
-        _registration_id: reg.id,
-        _method: "manual",
-        _scanner_id: scannerId ?? null,
-        _checked_in_by: adminUserId || operatorName,
-        _payload_hash: null,
-        _ip: meta.ip,
-        _user_agent: meta.userAgent,
-      }),
-      supabaseAdmin
-        .from("events")
-        .select("general, district")
-        .eq("id", reg.event_id)
-        .maybeSingle(),
-    ]);
+    const { data: eventRow } = await supabaseAdmin
+      .from("events")
+      .select("id, slug, event_date, event_time, lifecycle_status, status, general, district")
+      .eq("id", reg.event_id)
+      .maybeSingle();
 
-    if (rpcResult.error || !rpcResult.data?.[0]) {
-      console.error("[operatorManualCheckIn] error:", rpcResult.error);
-      return { ok: false as const, error: "મેન્યુઅલ હાજરી નોંધવામાં નિષ્ફળતા મળી." };
-    }
-
-    const eventGeneral = (eventRowRes.data?.general ?? {}) as Record<string, unknown>;
-    const eventDistrict = (eventRowRes.data?.district as string) || "";
+    const eventGeneral = (eventRow?.general ?? {}) as Record<string, unknown>;
+    const eventDistrict = (eventRow?.district as string) || "";
     const cf = (reg.custom_fields ?? {}) as Record<string, unknown>;
     const participantArea =
       (reg.district && String(reg.district).trim()) ||
@@ -1272,6 +1274,37 @@ export const operatorManualCheckIn = createServerFn({ method: "POST" })
     const eventTitle =
       (eventGeneral.title as string) ||
       (eventDistrict ? `${eventDistrict} યોગ શિબિર` : "Gujarat State Yog Board Event");
+
+    if (eventRow && isEventAttendanceClosed(eventRow as any)) {
+      return {
+        ok: false as const,
+        state: "closed" as const,
+        code: "ATTENDANCE_CLOSED" as const,
+        participant_name: reg.full_name,
+        participant_id: reg.registration_number,
+        event_id: reg.event_id,
+        event_title: eventTitle,
+        district: participantArea,
+        error: "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે. (Attendance Closed / Event Completed)",
+      };
+    }
+
+    const meta = requestMeta();
+    const rpcResult = await (supabaseAdmin.rpc as any)("record_event_checkin", {
+      _event_id: reg.event_id,
+      _registration_id: reg.id,
+      _method: "manual",
+      _scanner_id: scannerId ?? null,
+      _checked_in_by: adminUserId || operatorName,
+      _payload_hash: null,
+      _ip: meta.ip,
+      _user_agent: meta.userAgent,
+    });
+
+    if (rpcResult.error || !rpcResult.data?.[0]) {
+      console.error("[operatorManualCheckIn] error:", rpcResult.error);
+      return { ok: false as const, error: "મેન્યુઅલ હાજરી નોંધવામાં નિષ્ફળતા મળી." };
+    }
 
     const [totalAttendedRes, operatorScansRes] = await Promise.all([
       supabaseAdmin
@@ -1406,6 +1439,21 @@ export const adminManualCheckIn = createServerFn({ method: "POST" })
     const admin = await requireAdmin();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const meta = requestMeta();
+
+    const { data: eventRow } = await supabaseAdmin
+      .from("events")
+      .select("id, slug, event_date, event_time, lifecycle_status, status, general")
+      .eq("id", data.event_id)
+      .maybeSingle();
+
+    if (eventRow && isEventAttendanceClosed(eventRow as any)) {
+      return {
+        ok: false as const,
+        state: "closed" as const,
+        code: "ATTENDANCE_CLOSED" as const,
+        error: "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે. (Attendance Closed / Event Completed)",
+      };
+    }
 
     const { data: rows, error } = await (supabaseAdmin.rpc as any)("record_event_checkin", {
       _event_id: data.event_id,

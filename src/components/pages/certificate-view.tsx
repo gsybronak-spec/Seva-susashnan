@@ -6,37 +6,65 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Award, Download, Search, ShieldCheck, Clock, Image as ImageIcon } from "lucide-react";
-import { certificateStatus, getCertificateRenderData } from "@/lib/certificate.functions";
+import {
+  certificateStatus,
+  getCertificateRenderData,
+  type CertificateEventChoice,
+} from "@/lib/certificate.functions";
 import { CertificateRender, type CertificateRenderData } from "@/components/certificate-render";
 
 const CERTIFICATE_LOOKUP_TIMEOUT_MS = 15_000;
 const CERTIFICATE_RENDER_TIMEOUT_MS = 20_000;
 
+type SingleCertificateStatus = {
+  ok: true;
+  requires_selection?: false;
+  registration_id: string;
+  event_id: string;
+  event_slug?: string | null;
+  district?: string;
+  participant_name: string;
+  registration_number: string;
+  event_title: string;
+  event_completed?: boolean;
+  joined?: boolean;
+  eligible: boolean;
+  certificate_enabled: boolean;
+  issue: { certificate_number: string; status: string; issued_at: string | null } | null;
+  render_payload?: {
+    registration_id?: string;
+    event_id?: string;
+    participant_name: string;
+    registration_number: string;
+    certificate_number: string;
+    issued_at: string | null;
+    general: any;
+    certificate: any;
+    template: any;
+  } | null;
+};
+
+type MultiEventSelectionStatus = {
+  ok: true;
+  requires_selection: true;
+  choices: CertificateEventChoice[];
+};
+
 type StatusResult =
-  | { ok: true;
-      participant_name: string;
-      registration_number: string;
-      event_title: string;
-      event_completed?: boolean;
-      joined?: boolean;
-      eligible: boolean;
-      certificate_enabled: boolean;
-      issue: { certificate_number: string; status: string; issued_at: string | null } | null;
-      render_payload?: {
-        participant_name: string;
-        registration_number: string;
-        certificate_number: string;
-        issued_at: string | null;
-        general: any;
-        certificate: any;
-        template: any;
-      } | null;
-    }
-  | { ok: false; error: string };
+  | SingleCertificateStatus
+  | MultiEventSelectionStatus
+  | { ok: false; error: string; code?: string };
 
 export type CertificateViewProps = {
   eventSlug?: string;
 };
+
+function normalizeClientMobile10(raw: string): string {
+  const digits = raw.replace(/[\s\-().+]/g, "").replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
+  if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+  return digits.slice(0, 10);
+}
 
 function formatDate(dateISO: string | null): string {
   if (!dateISO) return "";
@@ -240,34 +268,45 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
   const [mobile, setMobile] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<StatusResult | null>(null);
+  const [choicesList, setChoicesList] = useState<CertificateEventChoice[]>([]);
   const [render, setRender] = useState<CertificateRenderData | null>(null);
   const [rendering, setRendering] = useState(false);
-  const cachedJpegRef = useRef<string | null>(null);
+  const cachedJpegRef = useRef<{ cacheKey: string; dataUrl: string } | null>(null);
 
   const lookup = useServerFn(certificateStatus);
   const loadRender = useServerFn(getCertificateRenderData);
   const certRef = useRef<HTMLDivElement>(null);
 
-  // Clear cached raster when certificate changes
-  useEffect(() => {
-    cachedJpegRef.current = null;
-  }, [render?.certificate_number]);
+  // Compute strict per-registration + per-event cache key (NEVER mobile-only)
+  const activeCacheKey =
+    status && status.ok && !status.requires_selection && render
+      ? `${status.registration_id}:${status.event_id}:${render.certificate_number}`
+      : null;
 
-  async function warmCertificateAssets(data: CertificateRenderData) {
+  // Clear cached raster whenever registration_id, event_id, or certificate_number changes
+  useEffect(() => {
+    if (!activeCacheKey || cachedJpegRef.current?.cacheKey !== activeCacheKey) {
+      cachedJpegRef.current = null;
+    }
+  }, [activeCacheKey]);
+
+  async function warmCertificateAssets(data: CertificateRenderData, cacheKey: string) {
     try {
       const jpeg = await renderCertificateCanvas(data);
-      cachedJpegRef.current = jpeg;
+      cachedJpegRef.current = { cacheKey, dataUrl: jpeg };
     } catch {
       // Ignore background warming errors; on-demand generator will handle
     }
   }
 
   async function getCertificateJpeg(): Promise<string | null> {
-    if (cachedJpegRef.current) return cachedJpegRef.current;
-    if (!render) return null;
+    if (!render || !activeCacheKey) return null;
+    if (cachedJpegRef.current && cachedJpegRef.current.cacheKey === activeCacheKey) {
+      return cachedJpegRef.current.dataUrl;
+    }
     try {
       const dataUrl = await renderCertificateCanvas(render);
-      cachedJpegRef.current = dataUrl;
+      cachedJpegRef.current = { cacheKey: activeCacheKey, dataUrl };
       return dataUrl;
     } catch (canvasErr) {
       console.warn("Direct canvas render failed, falling back to html-to-image:", canvasErr);
@@ -279,25 +318,44 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
         backgroundColor: "#ffffff",
         quality: 0.9,
       });
-      cachedJpegRef.current = fallbackUrl;
+      cachedJpegRef.current = { cacheKey: activeCacheKey, dataUrl: fallbackUrl };
       return fallbackUrl;
     }
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const mob = mobile.replace(/\D/g, "");
-    if (!/^[6-9]\d{9}$/.test(mob)) { toast.error("Enter a valid 10-digit mobile number."); return; }
-    setLoading(true); setStatus(null); setRender(null); cachedJpegRef.current = null;
+  async function executeCertificateQuery(params: {
+    mob: string;
+    registration_id?: string;
+    event_id?: string;
+  }) {
+    setLoading(true);
+    setStatus(null);
+    setRender(null);
+    cachedJpegRef.current = null;
+
     try {
       const res = (await withTimeout(
-        lookup({ data: { mobile: mob, district_slug: eventSlug } }) as Promise<StatusResult>,
+        lookup({
+          data: {
+            mobile: params.mob,
+            district_slug: eventSlug,
+            registration_id: params.registration_id,
+            event_id: params.event_id,
+          },
+        }) as Promise<StatusResult>,
         CERTIFICATE_LOOKUP_TIMEOUT_MS,
         "Certificate search took too long. Please try again.",
       )) as StatusResult;
+
       setStatus(res);
-      if (res.ok && res.issue && (res.issue.status === "issued" || res.issue.status === "approved")) {
-        // Fast-path: single-roundtrip render_payload returned directly from certificateStatus
+
+      if (res.ok && res.requires_selection) {
+        setChoicesList(res.choices);
+        return;
+      }
+
+      if (res.ok && !res.requires_selection && res.issue && (res.issue.status === "issued" || res.issue.status === "approved")) {
+        const key = `${res.registration_id}:${res.event_id}:${res.issue.certificate_number}`;
         if (res.render_payload) {
           const r = res.render_payload;
           const renderData: CertificateRenderData = {
@@ -311,9 +369,8 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
             verifyUrl: `${window.location.origin}/verify/${r.certificate_number}`,
           };
           setRender(renderData);
-          void warmCertificateAssets(renderData);
+          void warmCertificateAssets(renderData, key);
         } else {
-          // Secondary fallback roundtrip if render_payload is not provided
           setRendering(true);
           try {
             const r = await withTimeout(
@@ -333,7 +390,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
                 verifyUrl: `${window.location.origin}/verify/${r.certificate_number}`,
               };
               setRender(renderData);
-              void warmCertificateAssets(renderData);
+              void warmCertificateAssets(renderData, key);
             } else {
               toast.error(r.error || "Certificate preview is not available.");
             }
@@ -352,6 +409,27 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
       setRendering(false);
       setLoading(false);
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const mob = normalizeClientMobile10(mobile);
+    if (!/^[6-9]\d{9}$/.test(mob)) {
+      toast.error("Enter a valid 10-digit mobile number.");
+      return;
+    }
+    setChoicesList([]);
+    await executeCertificateQuery({ mob });
+  }
+
+  async function handleSelectChoice(choice: CertificateEventChoice) {
+    const mob = normalizeClientMobile10(mobile);
+    if (!/^[6-9]\d{9}$/.test(mob)) return;
+    await executeCertificateQuery({
+      mob,
+      registration_id: choice.registration_id,
+      event_id: choice.event_id,
+    });
   }
 
   async function downloadPdf() {
@@ -407,7 +485,9 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
               inputMode="numeric"
               placeholder="10-digit mobile"
               value={mobile}
-              onChange={(e) => setMobile(e.target.value.replace(/\D/g, "").slice(0, 10))}
+              onChange={(e) => {
+                setMobile(normalizeClientMobile10(e.target.value));
+              }}
               required
               autoFocus
             />
@@ -420,14 +500,100 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
       </div>
 
       {status && !status.ok && (
-        <div className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center text-sm text-destructive">
+        <div
+          className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center text-sm font-medium text-destructive"
+          data-testid="certificate-error-message"
+        >
           {status.error}
         </div>
       )}
 
-      {status?.ok && (
+      {status?.ok && status.requires_selection && (
+        <div
+          className="mt-6 overflow-hidden rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-4"
+          data-testid="certificate-event-selector"
+        >
+          <div className="text-center space-y-1">
+            <h2 className="text-lg font-bold text-brand-primary">
+              તમારી યોગ શિબિર પસંદ કરો (Select Your Yog Shibir)
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              આ મોબાઈલ નંબર પર એકથી વધુ યોગ શિબિરમાં રજીસ્ટ્રેશન થયેલ છે. પ્રમાણપત્ર મેળવવા માટે તમારી શિબિર પસંદ કરો:
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {status.choices.map((c) => (
+              <div
+                key={c.registration_id}
+                data-testid={`certificate-choice-${c.registration_number}`}
+                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4 hover:border-brand-primary/50 transition-all"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-base text-foreground">{c.event_title}</span>
+                    {c.event_completed ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+                        પ્રમાણપત્ર ઉપલબ્ધ (Ready)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                        શિબિર પૂર્ણ થયા બાદ ઉપલબ્ધ
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-foreground">{c.full_name}</span>
+                    <span>•</span>
+                    <span className="font-mono text-brand-primary font-bold">{c.registration_number}</span>
+                    {c.district && (
+                      <>
+                        <span>•</span>
+                        <span>📍 {c.district}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={() => void handleSelectChoice(c)}
+                  disabled={loading}
+                  data-testid={`select-event-btn-${c.registration_number}`}
+                  className="shrink-0"
+                >
+                  પ્રમાણપત્ર જુઓ (Select)
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {status?.ok && !status.requires_selection && (
         <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="p-6 sm:p-8">
+            {choicesList.length > 1 && (
+              <div className="mb-4 flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setRender(null);
+                    cachedJpegRef.current = null;
+                    setStatus({
+                      ok: true,
+                      requires_selection: true,
+                      choices: choicesList,
+                    });
+                  }}
+                >
+                  ← શિબિર બદલો (Change Event)
+                </Button>
+              </div>
+            )}
+
             <div className="text-center">
               <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-brand-primary">
                 <Award className="h-7 w-7" />
@@ -435,7 +601,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
               <div className="text-xs uppercase tracking-wide text-muted-foreground">Participant</div>
               <div className="text-xl font-semibold text-foreground">{status.participant_name}</div>
               <div className="mt-1 font-mono text-sm text-brand-primary">{status.registration_number}</div>
-              <div className="mt-1 text-sm text-muted-foreground">{status.event_title}</div>
+              <div className="mt-1 text-sm font-medium text-muted-foreground">{status.event_title}</div>
             </div>
 
             {!status.certificate_enabled && (

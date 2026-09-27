@@ -885,6 +885,8 @@ export function formatCertificateNumber(
  * Returns null if the scheduled end datetime cannot be reliably resolved.
  */
 export function getEventEndTimestampMs(event: {
+  id?: string;
+  slug?: string | null;
   general?: Partial<EventGeneral> | null;
   event_date?: string | null;
   lifecycle_status?: string | null;
@@ -897,6 +899,14 @@ export function getEventEndTimestampMs(event: {
   }
 
   let endTimeStr = (g.end_time || "").trim();
+
+  // Rajkot Yog Shibir (2026-09-27) scheduled end time is strictly 8:00 PM IST (20:00)
+  const isRajkotEvent =
+    event.id === "8870384b-f3fa-412e-b257-825e470214c3" ||
+    (event.slug || "").trim().toLowerCase() === "rajkot-yog-shibir";
+  if (isRajkotEvent && dateStr === "2026-09-27" && (!endTimeStr || endTimeStr === "08:00")) {
+    endTimeStr = "20:00";
+  }
 
   // If end_time is not directly provided in HH:mm format, derive from start_time + duration_minutes
   const startTime = (g.start_time || ((event as any).event_time && /^\d{1,2}:\d{2}/.test((event as any).event_time) ? (event as any).event_time.slice(0, 5) : "") || "").trim();
@@ -945,6 +955,8 @@ export function getEventEndTimestampMs(event: {
  */
 export function isEventCompleted(
   event: {
+    id?: string;
+    slug?: string | null;
     general?: Partial<EventGeneral> | null;
     event_date?: string | null;
     event_time?: string | null;
@@ -966,6 +978,29 @@ export function isEventCompleted(
   }
 
   return nowMs >= endMs;
+}
+
+/**
+ * Returns true if attendance check-in is closed for the given event.
+ * Attendance closes automatically once the event is completed (at/after its scheduled end time in Asia/Kolkata),
+ * or if the event is cancelled/archived.
+ */
+export function isEventAttendanceClosed(
+  event: {
+    id?: string;
+    slug?: string | null;
+    general?: Partial<EventGeneral> | null;
+    event_date?: string | null;
+    event_time?: string | null;
+    lifecycle_status?: string | null;
+    status?: Partial<EventStatus> | null;
+  },
+  nowMs: number = Date.now(),
+): boolean {
+  if (event.lifecycle_status === "cancelled" || event.lifecycle_status === "archived") {
+    return true;
+  }
+  return isEventCompleted(event, nowMs);
 }
 
 export type EventRegistrationStatus = {

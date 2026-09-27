@@ -199,6 +199,19 @@ export const performCheckin = createServerFn({ method: "POST" })
     };
 
     const eventId = regData.event_id;
+    const { data: eventRow } = await supabaseAdmin
+      .from("events")
+      .select("id, slug, event_date, event_time, lifecycle_status, status, general")
+      .eq("id", eventId)
+      .maybeSingle();
+    const { isEventAttendanceClosed } = await import("@/lib/event-config");
+    if (eventRow && isEventAttendanceClosed(eventRow as any)) {
+      return {
+        ok: false,
+        error: "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે. (Attendance Closed / Event Completed)",
+      };
+    }
+
     const cf = (regData.custom_fields ?? {}) as Record<string, unknown>;
     const rawPt = (cf.participant_type as string) ?? null;
     const participantType =

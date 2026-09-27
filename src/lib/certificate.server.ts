@@ -11,6 +11,8 @@ import {
 
 export type ActiveEvent = {
   id: string;
+  slug?: string | null;
+  district?: string | null;
   district_id: string | null;
   config: EventConfig;
   event_date?: string | null;
@@ -52,6 +54,9 @@ async function resolveActiveCertificateEvent(): Promise<ActiveEvent | null> {
   if (!data) return null;
   const raw = data as unknown as Partial<EventConfig> & {
     id: string;
+    slug?: string | null;
+    district?: string | null;
+    district_name?: string | null;
     district_id?: string | null;
     event_date?: string | null;
     lifecycle_status?: string | null;
@@ -60,6 +65,8 @@ async function resolveActiveCertificateEvent(): Promise<ActiveEvent | null> {
   const cfg = mergeConfig(raw);
   return {
     id: raw.id,
+    slug: raw.slug ?? null,
+    district: raw.district ?? raw.district_name ?? null,
     district_id: raw.district_id ?? null,
     event_date: raw.event_date ?? null,
     lifecycle_status: raw.lifecycle_status ?? null,
@@ -76,6 +83,9 @@ export async function loadCertificateEvent(districtSlug?: string | null): Promis
   if (!resolved || !resolved.event?.id) return null;
   const raw = resolved.event as Partial<EventConfig> & {
     id: string;
+    slug?: string | null;
+    district?: string | null;
+    district_name?: string | null;
     event_date?: string | null;
     lifecycle_status?: string | null;
     status?: Partial<EventStatus> | null;
@@ -83,6 +93,8 @@ export async function loadCertificateEvent(districtSlug?: string | null): Promis
   const cfg = mergeConfig(raw);
   return {
     id: raw.id,
+    slug: raw.slug ?? resolved.district_slug ?? null,
+    district: raw.district ?? raw.district_name ?? resolved.district_name ?? null,
     district_id: resolved.district_id,
     event_date: raw.event_date ?? null,
     lifecycle_status: raw.lifecycle_status ?? null,
@@ -98,6 +110,9 @@ export async function loadEventById(eventId: string): Promise<ActiveEvent | null
   if (!w) return null;
   const raw = w as unknown as Partial<EventConfig> & {
     id: string;
+    slug?: string | null;
+    district?: string | null;
+    district_name?: string | null;
     district_id?: string | null;
     event_date?: string | null;
     lifecycle_status?: string | null;
@@ -106,6 +121,8 @@ export async function loadEventById(eventId: string): Promise<ActiveEvent | null
   const cfg = mergeConfig(raw);
   return {
     id: raw.id,
+    slug: raw.slug ?? null,
+    district: raw.district ?? raw.district_name ?? null,
     district_id: raw.district_id ?? null,
     event_date: raw.event_date ?? null,
     lifecycle_status: raw.lifecycle_status ?? null,
@@ -145,6 +162,8 @@ export async function nextCertNumber(fmt: CertificateNumberFormat): Promise<stri
 
 export function isEligibleForCertificate(event: ActiveEvent): boolean {
   return isEventCompleted({
+    id: event.id,
+    slug: event.slug,
     general: event.config.general,
     event_date: event.event_date ?? event.config.general.event_date,
     lifecycle_status: event.lifecycle_status,

@@ -34,8 +34,8 @@ import {
 } from "@/lib/event-engine.functions";
 
 type ScanResult = {
-  state: "success" | "duplicate" | "invalid" | "unauthorized" | "error";
-  code?: "PLAIN_REGISTRATION_NUMBER" | "CROSS_EVENT" | "INVALID_QR" | "NOT_FOUND";
+  state: "success" | "duplicate" | "closed" | "invalid" | "unauthorized" | "error";
+  code?: "PLAIN_REGISTRATION_NUMBER" | "CROSS_EVENT" | "INVALID_QR" | "NOT_FOUND" | "ATTENDANCE_CLOSED";
   participant_name?: string;
   participant_id?: string;
   event_id?: string;
@@ -57,6 +57,7 @@ type ManualParticipantRow = {
   event_title: string;
   is_attended: boolean;
   check_in_time?: string | null;
+  attendance_closed?: boolean;
 };
 
 function normalizeMobileClient(raw: string): string {
@@ -628,7 +629,15 @@ export function EventOperatorScannerView({
           playSound(nextState);
         }
       } else {
-        setResult({ state: "error", error: res.error });
+        setResult({
+          state: (res as any).state === "closed" ? "closed" : "error",
+          code: (res as any).code,
+          participant_name: (res as any).participant_name || row.full_name,
+          participant_id: (res as any).participant_id || row.registration_number,
+          event_title: (res as any).event_title || row.event_title,
+          district: (res as any).district || row.district,
+          error: res.error,
+        });
         if (soundEnabled) playSound("error");
       }
     } catch (err) {
@@ -890,6 +899,34 @@ export function EventOperatorScannerView({
               </div>
             )}
 
+            {result.state === "closed" && (
+              <div className="bg-slate-900 border-2 border-rose-500 text-white p-3.5 rounded-2xl">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
+                    <Clock className="w-6 h-6 stroke-[2.5]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-rose-400 block">
+                      🔒 હાજરી બંધ / શિબિર પૂર્ણ (Attendance Closed)
+                    </span>
+                    {result.participant_name && (
+                      <h3 className="text-base font-extrabold text-white truncate mt-0.5">
+                        {result.participant_name}
+                      </h3>
+                    )}
+                    {result.event_title && (
+                      <p className="text-xs text-rose-200 font-semibold mt-1 truncate">
+                        {result.event_title}
+                      </p>
+                    )}
+                    <p className="text-xs font-medium text-rose-100 leading-relaxed mt-1">
+                      {result.error || "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {(result.state === "invalid" || result.state === "error" || result.state === "unauthorized") && (
               <div className="bg-rose-950 border-2 border-rose-400 text-white p-3.5 rounded-2xl">
                 <div className="flex items-start gap-3">
@@ -1102,6 +1139,11 @@ export function EventOperatorScannerView({
                           હાજરી પહેલેથી નોંધાઈ છે
                         </span>
                       )}
+                      {r.attendance_closed && (
+                        <span className="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[10px] font-bold">
+                          હાજરી બંધ (પૂર્ણ)
+                        </span>
+                      )}
                     </div>
 
                     <p className="text-xs font-bold text-emerald-400 truncate">
@@ -1123,21 +1165,25 @@ export function EventOperatorScannerView({
                   <Button
                     type="button"
                     size="sm"
-                    disabled={markingId === r.id}
+                    disabled={markingId === r.id || r.attendance_closed}
                     onClick={() => void handleManualMark(r)}
                     data-testid={`manual-checkin-${r.registration_number}`}
                     className={`h-10 px-3.5 rounded-xl text-xs font-extrabold gap-1.5 shrink-0 ${
-                      r.is_attended
+                      r.attendance_closed
+                        ? "bg-slate-800 text-slate-400 cursor-not-allowed"
+                        : r.is_attended
                         ? "bg-amber-600 hover:bg-amber-500 text-white"
                         : "bg-emerald-600 hover:bg-emerald-500 text-white"
                     }`}
                   >
                     {markingId === r.id ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : r.attendance_closed ? (
+                      <Clock className="w-3.5 h-3.5" />
                     ) : (
                       <UserCheck className="w-3.5 h-3.5" />
                     )}
-                    <span>{r.is_attended ? "Check In" : "Check In"}</span>
+                    <span>{r.attendance_closed ? "હાજરી બંધ" : "Check In"}</span>
                   </Button>
                 </div>
               ))}
