@@ -680,10 +680,7 @@ export function RegisterView({
                 {regStatus.status === "completed" && config.features?.certificate !== false && (
                   <div className="pt-2">
                     <Button asChild className="h-12 px-6 bg-[#0F3E3E] hover:bg-[#144D4D] text-[#FAF8F5] font-semibold rounded-xl">
-                      <Link
-                        to={eventSlug ? "/$event/certificate" : "/certificate"}
-                        params={eventSlug ? { event: eventSlug } : undefined}
-                      >
+                      <Link to="/certificate">
                         <Award className="w-4 h-4 mr-2" />
                         Download Certificate / પ્રમાણપત્ર મેળવો
                       </Link>

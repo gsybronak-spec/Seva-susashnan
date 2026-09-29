@@ -83,7 +83,7 @@ function EventHome() {
               )}
               {regStatus.status === "completed" && features.certificate && (
                 <Button asChild size="lg" className="h-12 px-8 text-base bg-brand-primary text-white">
-                  <Link to="/$event/certificate" params={{ event: eventSlug }}>
+                  <Link to="/certificate">
                     <Award className="mr-2 h-5 w-5" /> Download Certificate
                   </Link>
                 </Button>
@@ -95,7 +95,7 @@ function EventHome() {
               )}
               {features.certificate && regStatus.status !== "completed" && (
                 <Button asChild size="lg" variant="outline" className="h-12 px-8 text-base">
-                  <Link to="/$event/certificate" params={{ event: eventSlug }}>Download Certificate</Link>
+                  <Link to="/certificate">Download Certificate</Link>
                 </Button>
               )}
             </div>

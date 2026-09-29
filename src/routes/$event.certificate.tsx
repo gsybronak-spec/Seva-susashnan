@@ -17,6 +17,5 @@ export const Route = createFileRoute("/$event/certificate")({
 });
 
 function CertificateRoute() {
-  const { event: eventSlug } = Route.useParams() as { event: string };
-  return <CertificateView eventSlug={eventSlug} />;
+  return <CertificateView />;
 }

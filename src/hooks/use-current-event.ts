@@ -5,15 +5,14 @@ import { BRAND } from "@/lib/brand";
 // compatibility with links shared publicly before the multi-event refactor.
 const LEGACY_DEFAULT_PATHS = new Set([
   "/register",
-  "/certificate",
   "/success",
 ]);
 
 /**
  * Returns the current microsite/district slug based on URL:
- *   /{slug}/...                    → slug
- *   /register, /live, /certificate → default microsite (legacy aliases)
- *   otherwise                      → null (platform / global pages)
+ *   /{slug}/...       → slug
+ *   /register         → default microsite (legacy aliases)
+ *   /certificate, etc → null (global common routes)
  */
 export function useCurrentEvent(): string | null {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -27,7 +26,7 @@ export function useCurrentEvent(): string | null {
   // Explicit /{district}/... — first segment. Skip global routes.
   const first = pathname.split("/").filter(Boolean)[0];
   if (!first) return null;
-  const GLOBAL = new Set(["admin", "privacy", "terms", "contact", "verify", "auth", "campaigns", "idcard"]);
+  const GLOBAL = new Set(["admin", "privacy", "terms", "contact", "verify", "auth", "campaigns", "idcard", "certificate"]);
   if (GLOBAL.has(first)) return null;
   return first.toLowerCase();
 }

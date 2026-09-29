@@ -371,12 +371,30 @@ export async function getCertificateRenderPayload(certificateNumber: string) {
     event_id: string | null;
   };
 
-  const { data: w } = await supabaseAdmin
-    .from("events")
-    .select("general, certificate")
-    .eq("id", r.event_id ?? "")
-    .maybeSingle();
-  if (!w) return { ok: false as const, error: "Event not found." };
+  if (!r.event_id || !r.registration_number) {
+    return { ok: false as const, error: "Invalid certificate record." };
+  }
+
+  // Validate registration.id + registration.event_id + certificate event_id
+  const [regRes, eventRes] = await Promise.all([
+    supabaseAdmin
+      .from("registrations")
+      .select("id, event_id, registration_number, full_name")
+      .eq("registration_number", r.registration_number)
+      .eq("event_id", r.event_id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("events")
+      .select("id, general, certificate")
+      .eq("id", r.event_id)
+      .maybeSingle(),
+  ]);
+
+  const reg = regRes.data;
+  const w = eventRes.data;
+  if (!reg || !w || reg.event_id !== w.id || reg.event_id !== r.event_id) {
+    return { ok: false as const, error: "Certificate event mismatch." };
+  }
 
   const cfg = mergeConfig({
     general: (w.general ?? {}) as unknown as EventConfig["general"],
@@ -388,8 +406,10 @@ export async function getCertificateRenderPayload(certificateNumber: string) {
 
   return {
     ok: true as const,
-    participant_name: r.full_name,
-    registration_number: r.registration_number,
+    registration_id: reg.id as string,
+    event_id: w.id as string,
+    participant_name: reg.full_name || r.full_name,
+    registration_number: reg.registration_number,
     certificate_number: r.certificate_number,
     issued_at: r.issued_at,
     general: cfg.general,

@@ -277,10 +277,10 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
   const loadRender = useServerFn(getCertificateRenderData);
   const certRef = useRef<HTMLDivElement>(null);
 
-  // Compute strict per-registration + per-event cache key (NEVER mobile-only)
+  // Compute strict per-registration + per-event + per-certificate cache key (NEVER mobile-only)
   const activeCacheKey =
     status && status.ok && !status.requires_selection && render
-      ? `${status.registration_id}:${status.event_id}:${render.certificate_number}`
+      ? `certificate:${status.registration_id}:${status.event_id}:${render.certificate_number}`
       : null;
 
   // Clear cached raster whenever registration_id, event_id, or certificate_number changes
@@ -334,11 +334,13 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
     cachedJpegRef.current = null;
 
     try {
+      // NEVER pass browser URL eventSlug to guess/restrict the event.
+      // Only mobile (or explicit registration_id + event_id when selecting from multiple registrations)
+      // is sent so the server resolves registration.event_id -> events.id -> certificate config.
       const res = (await withTimeout(
         lookup({
           data: {
             mobile: params.mob,
-            district_slug: eventSlug,
             registration_id: params.registration_id,
             event_id: params.event_id,
           },
@@ -355,7 +357,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
       }
 
       if (res.ok && !res.requires_selection && res.issue && (res.issue.status === "issued" || res.issue.status === "approved")) {
-        const key = `${res.registration_id}:${res.event_id}:${res.issue.certificate_number}`;
+        const key = `certificate:${res.registration_id}:${res.event_id}:${res.issue.certificate_number}`;
         if (res.render_payload) {
           const r = res.render_payload;
           const renderData: CertificateRenderData = {
@@ -415,7 +417,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
     e.preventDefault();
     const mob = normalizeClientMobile10(mobile);
     if (!/^[6-9]\d{9}$/.test(mob)) {
-      toast.error("Enter a valid 10-digit mobile number.");
+      toast.error("કૃપા કરીને માન્ય 10-અંકનો મોબાઇલ નંબર દાખલ કરો.");
       return;
     }
     setChoicesList([]);
@@ -469,9 +471,9 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <div className="mb-6 text-center">
-        <h1 className="text-3xl font-bold text-brand-primary">Download Certificate</h1>
+        <h1 className="text-3xl font-bold text-brand-primary">પ્રમાણપત્ર ડાઉનલોડ</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Enter your registered mobile number. No registration number needed.
+          તમારો મોબાઇલ નંબર દાખલ કરો
         </p>
       </div>
 
@@ -479,22 +481,30 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
         <div className="brand-bar h-1 w-full" />
         <form onSubmit={onSubmit} className="space-y-4 p-6 sm:p-8">
           <div className="space-y-1.5">
-            <Label htmlFor="mobile">Registered Mobile Number</Label>
+            <Label htmlFor="mobile">તમારો મોબાઇલ નંબર દાખલ કરો</Label>
             <Input
               id="mobile"
               inputMode="numeric"
-              placeholder="10-digit mobile"
+              placeholder="તમારો મોબાઇલ નંબર દાખલ કરો"
               value={mobile}
               onChange={(e) => {
-                setMobile(normalizeClientMobile10(e.target.value));
+                const nextMob = normalizeClientMobile10(e.target.value);
+                setMobile(nextMob);
+                // Immediately clear previous certificate & cache when mobile changes
+                if (status || render || choicesList.length > 0) {
+                  setStatus(null);
+                  setRender(null);
+                  setChoicesList([]);
+                  cachedJpegRef.current = null;
+                }
               }}
               required
               autoFocus
             />
           </div>
-          <Button type="submit" size="lg" className="h-12 w-full" disabled={loading}>
+          <Button type="submit" size="lg" className="h-12 w-full font-bold text-base" disabled={loading}>
             <Search className="mr-2 h-5 w-5" />
-            {loading ? "Searching…" : "Find My Certificate"}
+            {loading ? "શોધી રહ્યા છીએ…" : "પ્રમાણપત્ર જુઓ"}
           </Button>
         </form>
       </div>
@@ -513,58 +523,29 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
           className="mt-6 overflow-hidden rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-4"
           data-testid="certificate-event-selector"
         >
-          <div className="text-center space-y-1">
-            <h2 className="text-lg font-bold text-brand-primary">
-              તમારી યોગ શિબિર પસંદ કરો (Select Your Yog Shibir)
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              આ મોબાઈલ નંબર પર એકથી વધુ યોગ શિબિરમાં રજીસ્ટ્રેશન થયેલ છે. પ્રમાણપત્ર મેળવવા માટે તમારી શિબિર પસંદ કરો:
-            </p>
-          </div>
+          <p className="text-center text-base font-bold text-brand-primary">
+            આ મોબાઇલ નંબરથી એકથી વધુ યોગ શિબિરમાં નોંધણી મળી છે.
+          </p>
 
-          <div className="space-y-3">
+          <div className="grid gap-3">
             {status.choices.map((c) => (
-              <div
+              <Button
                 key={c.registration_id}
-                data-testid={`certificate-choice-${c.registration_number}`}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4 hover:border-brand-primary/50 transition-all"
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={() => void handleSelectChoice(c)}
+                disabled={loading}
+                data-testid={`select-event-btn-${c.registration_number}`}
+                className="h-auto py-4 px-5 flex items-center justify-between text-left border-border hover:border-brand-primary hover:bg-accent/40 rounded-xl"
               >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-base text-foreground">{c.event_title}</span>
-                    {c.event_completed ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
-                        પ્રમાણપત્ર ઉપલબ્ધ (Ready)
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
-                        શિબિર પૂર્ણ થયા બાદ ઉપલબ્ધ
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-foreground">{c.full_name}</span>
-                    <span>•</span>
-                    <span className="font-mono text-brand-primary font-bold">{c.registration_number}</span>
-                    {c.district && (
-                      <>
-                        <span>•</span>
-                        <span>📍 {c.district}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <Button
-                  type="button"
-                  onClick={() => void handleSelectChoice(c)}
-                  disabled={loading}
-                  data-testid={`select-event-btn-${c.registration_number}`}
-                  className="shrink-0"
-                >
-                  પ્રમાણપત્ર જુઓ (Select)
-                </Button>
-              </div>
+                <span className="font-bold text-base text-foreground">
+                  {c.event_title}
+                </span>
+                <span className="font-mono text-xs text-brand-primary font-semibold ml-3">
+                  {c.registration_number} →
+                </span>
+              </Button>
             ))}
           </div>
         </div>
@@ -589,7 +570,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
                     });
                   }}
                 >
-                  ← શિબિર બદલો (Change Event)
+                  ← અન્ય શિબિર પસંદ કરો
                 </Button>
               </div>
             )}
@@ -598,7 +579,6 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
               <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-brand-primary">
                 <Award className="h-7 w-7" />
               </div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Participant</div>
               <div className="text-xl font-semibold text-foreground">{status.participant_name}</div>
               <div className="mt-1 font-mono text-sm text-brand-primary">{status.registration_number}</div>
               <div className="mt-1 text-sm font-medium text-muted-foreground">{status.event_title}</div>
@@ -615,8 +595,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-800">
                   <Clock className="h-6 w-6" />
                 </div>
-                <div className="text-lg font-bold text-amber-950">પ્રમાણપત્ર હાલમાં ઉપલબ્ધ નથી.</div>
-                <div className="text-sm font-medium text-amber-900 leading-relaxed max-w-md mx-auto">
+                <div className="text-base font-bold text-amber-950">
                   યોગ શિબિર પૂર્ણ થયા બાદ પ્રમાણપત્ર ડાઉનલોડ કરી શકાશે.
                 </div>
               </div>
@@ -638,11 +617,11 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
                   <>
                     <CertificatePreview render={render} certRef={certRef} />
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <Button onClick={downloadPdf} size="lg" className="h-12 w-full">
-                        <Download className="mr-2 h-5 w-5" /> Download PDF
+                      <Button onClick={downloadPdf} size="lg" className="h-12 w-full font-bold">
+                        <Download className="mr-2 h-5 w-5" /> Download Certificate (PDF)
                       </Button>
-                      <Button onClick={downloadJpg} size="lg" variant="outline" className="h-12 w-full">
-                        <ImageIcon className="mr-2 h-5 w-5" /> Download JPG
+                      <Button onClick={downloadJpg} size="lg" variant="outline" className="h-12 w-full font-bold">
+                        <ImageIcon className="mr-2 h-5 w-5" /> Download Certificate (JPG)
                       </Button>
                     </div>
                     <p className="text-center text-xs text-muted-foreground">

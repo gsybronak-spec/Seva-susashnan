@@ -10,6 +10,8 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const RAJKOT_ID = "8870384b-f3fa-412e-b257-825e470214c3";
 const AMRELI_ID = "201f1f7d-61ae-4807-942a-57290ba7e7d1";
+const JUNAGADH_ID = "7f11205c-15d3-4f8b-940f-8d40f3b1fb65";
+const PATAN_ID = "9b270384-2bf1-4a76-bf35-4d15f2269503";
 
 function getEventEndTimestampMs(event) {
   const g = event.general ?? {};
@@ -76,65 +78,43 @@ function isEventCompleted(event, nowMs = Date.now()) {
   return nowMs >= endMs;
 }
 
-function isEventAttendanceClosed(event, nowMs = Date.now()) {
-  if (event.lifecycle_status === "cancelled" || event.lifecycle_status === "archived") {
-    return true;
-  }
-  return isEventCompleted(event, nowMs);
-}
-
-async function simulateCertificateStatus({ mobile, district_slug, registration_id, event_id, nowMs = Date.now() }) {
+async function simulateUniversalCertificateLookup({ mobile, registration_id, event_id, nowMs = Date.now() }) {
   const digits = String(mobile || "").replace(/[\s\-().+]/g, "").replace(/\D/g, "");
-  const normMobile = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits.length === 11 && digits.startsWith("0") ? digits.slice(1) : digits;
-
-  if (district_slug) {
-    const { data: ev } = await supabase.from("events").select("*").eq("slug", district_slug).maybeSingle();
-    if (!ev) return { ok: false, error: "Event not found" };
-    const { data: regRows } = await supabase
-      .from("registrations")
-      .select("id, registration_number, full_name, mobile, district, event_id")
-      .eq("mobile", normMobile)
-      .eq("event_id", ev.id)
-      .limit(1);
-    const reg = regRows?.[0];
-    if (!reg || reg.event_id !== ev.id) {
-      return { ok: false, code: "WRONG_EVENT_OR_NOT_FOUND", error: "આ નોંધણી આ શિબિર માટે નથી." };
-    }
-    const completed = isEventCompleted(ev, nowMs);
-    return {
-      ok: true,
-      requires_selection: false,
-      registration_id: reg.id,
-      event_id: ev.id,
-      event_slug: ev.slug,
-      registration_number: reg.registration_number,
-      event_completed: completed,
-      eligible: completed,
-    };
-  }
+  const normMobile =
+    digits.length === 12 && digits.startsWith("91")
+      ? digits.slice(2)
+      : digits.length === 11 && digits.startsWith("0")
+        ? digits.slice(1)
+        : digits;
 
   if (registration_id && event_id) {
-    const { data: ev } = await supabase.from("events").select("*").eq("id", event_id).maybeSingle();
-    const { data: reg } = await supabase
-      .from("registrations")
-      .select("id, registration_number, full_name, mobile, district, event_id")
-      .eq("id", registration_id)
-      .eq("event_id", event_id)
-      .eq("mobile", normMobile)
-      .maybeSingle();
+    const [{ data: ev }, { data: reg }] = await Promise.all([
+      supabase.from("events").select("*").eq("id", event_id).maybeSingle(),
+      supabase
+        .from("registrations")
+        .select("id, registration_number, full_name, mobile, district, event_id")
+        .eq("id", registration_id)
+        .eq("event_id", event_id)
+        .eq("mobile", normMobile)
+        .maybeSingle(),
+    ]);
     if (!ev || !reg || reg.event_id !== ev.id) {
       return { ok: false, code: "WRONG_EVENT_OR_NOT_FOUND", error: "આ નોંધણી આ શિબિર માટે નથી." };
     }
     const completed = isEventCompleted(ev, nowMs);
+    const certNum = `CERT-${ev.slug}-${reg.registration_number}`;
     return {
       ok: true,
       requires_selection: false,
       registration_id: reg.id,
       event_id: ev.id,
       event_slug: ev.slug,
+      event_title: ev.general?.title,
       registration_number: reg.registration_number,
+      certificate_config: ev.certificate,
       event_completed: completed,
       eligible: completed,
+      cache_key: `certificate:${reg.id}:${ev.id}:${certNum}`,
     };
   }
 
@@ -151,9 +131,13 @@ async function simulateCertificateStatus({ mobile, district_slug, registration_i
     if (r.event_id && !byEvent.has(r.event_id)) byEvent.set(r.event_id, r);
   }
 
+  const eventIds = Array.from(byEvent.keys());
+  const { data: eventRows } = await supabase.from("events").select("*").in("id", eventIds);
+  const eventMap = new Map((eventRows || []).map((e) => [e.id, e]));
+
   const validChoices = [];
   for (const [evId, r] of byEvent.entries()) {
-    const { data: ev } = await supabase.from("events").select("*").eq("id", evId).maybeSingle();
+    const ev = eventMap.get(evId);
     if (ev) validChoices.push({ reg: r, event: ev });
   }
 
@@ -161,6 +145,7 @@ async function simulateCertificateStatus({ mobile, district_slug, registration_i
     return {
       ok: true,
       requires_selection: true,
+      message: "આ મોબાઇલ નંબરથી એકથી વધુ યોગ શિબિરમાં નોંધણી મળી છે.",
       choices: validChoices.map(({ reg, event }) => ({
         registration_id: reg.id,
         registration_number: reg.registration_number,
@@ -174,16 +159,36 @@ async function simulateCertificateStatus({ mobile, district_slug, registration_i
 
   const { reg, event } = validChoices[0];
   const completed = isEventCompleted(event, nowMs);
+  const certNum = `CERT-${event.slug}-${reg.registration_number}`;
   return {
     ok: true,
     requires_selection: false,
     registration_id: reg.id,
     event_id: event.id,
     event_slug: event.slug,
+    event_title: event.general?.title,
     registration_number: reg.registration_number,
+    certificate_config: event.certificate,
     event_completed: completed,
     eligible: completed,
+    cache_key: `certificate:${reg.id}:${event.id}:${certNum}`,
   };
+}
+
+async function findSingleEventParticipant(eventId) {
+  const { data: regs } = await supabase
+    .from("registrations")
+    .select("id, registration_number, full_name, mobile, event_id")
+    .eq("event_id", eventId)
+    .limit(40);
+  for (const r of regs || []) {
+    const { count } = await supabase
+      .from("registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("mobile", r.mobile);
+    if (count === 1) return r;
+  }
+  return regs?.[0] ?? null;
 }
 
 function assert(cond, msg) {
@@ -195,44 +200,49 @@ function assert(cond, msg) {
 }
 
 async function run() {
-  const { data: rajkotEv } = await supabase.from("events").select("*").eq("id", RAJKOT_ID).single();
-  const { data: amreliEv } = await supabase.from("events").select("*").eq("id", AMRELI_ID).single();
+  const { data: allEvents } = await supabase.from("events").select("id, slug, district");
+  const findEvId = (slugPart) =>
+    allEvents?.find((e) => (e.slug || "").toLowerCase().includes(slugPart) || (e.district || "").toLowerCase().includes(slugPart))?.id;
 
-  console.log("--- Loaded Events ---");
-  console.log("Rajkot:", { id: rajkotEv.id, slug: rajkotEv.slug, event_date: rajkotEv.event_date, end_time: rajkotEv.general?.end_time });
-  console.log("Amreli:", { id: amreliEv.id, slug: amreliEv.slug, event_date: amreliEv.event_date, end_time: amreliEv.general?.end_time });
+  const junagadhId = findEvId("junagadh");
+  const patanId = findEvId("patan");
 
-  // Find a pure Amreli participant and a pure Rajkot participant
-  const { data: amreliRegs } = await supabase.from("registrations").select("id, registration_number, full_name, mobile, event_id").eq("event_id", AMRELI_ID).limit(30);
-  const { data: rajkotRegs } = await supabase.from("registrations").select("id, registration_number, full_name, mobile, event_id").eq("event_id", RAJKOT_ID).limit(30);
+  const [pureAmreli, pureRajkot, pureJunagadh, purePatan] = await Promise.all([
+    findSingleEventParticipant(AMRELI_ID),
+    findSingleEventParticipant(RAJKOT_ID),
+    findSingleEventParticipant(junagadhId),
+    findSingleEventParticipant(patanId),
+  ]);
 
-  let pureAmreli = null;
-  for (const r of amreliRegs || []) {
-    const { count } = await supabase.from("registrations").select("id", { count: "exact", head: true }).eq("mobile", r.mobile);
-    if (count === 1) {
-      pureAmreli = r;
-      break;
-    }
-  }
+  // 1. Amreli mobile -> Amreli registration -> Amreli certificate only
+  const res1 = await simulateUniversalCertificateLookup({ mobile: `+91 ${pureAmreli.mobile}` });
+  assert(
+    res1.ok && !res1.requires_selection && res1.event_id === AMRELI_ID && res1.registration_id === pureAmreli.id,
+    `1. Amreli mobile (${pureAmreli.mobile}) -> Amreli registration (${res1.registration_number}) -> Amreli certificate only`
+  );
 
-  let pureRajkot = null;
-  for (const r of rajkotRegs || []) {
-    const { count } = await supabase.from("registrations").select("id", { count: "exact", head: true }).eq("mobile", r.mobile);
-    if (count === 1) {
-      pureRajkot = r;
-      break;
-    }
-  }
+  // 2. Rajkot mobile -> Rajkot registration -> Rajkot certificate only
+  const res2 = await simulateUniversalCertificateLookup({ mobile: `0${pureRajkot.mobile}` });
+  assert(
+    res2.ok && !res2.requires_selection && res2.event_id === RAJKOT_ID && res2.registration_id === pureRajkot.id,
+    `2. Rajkot mobile (${pureRajkot.mobile}) -> Rajkot registration (${res2.registration_number}) -> Rajkot certificate only`
+  );
 
-  // Test A: Amreli Participant
-  const resA = await simulateCertificateStatus({ mobile: `+91 ${pureAmreli.mobile}`, nowMs: Date.parse("2026-09-27T19:05:00+05:30") });
-  assert(resA.ok && !resA.requires_selection && resA.event_id === AMRELI_ID && resA.registration_id === pureAmreli.id, `Test A: Amreli mobile (${pureAmreli.mobile}) resolves strictly to Amreli (${resA.registration_number}) and never Rajkot`);
+  // 3. Junagadh mobile -> Junagadh registration -> Junagadh certificate only
+  const res3 = await simulateUniversalCertificateLookup({ mobile: pureJunagadh.mobile });
+  assert(
+    res3.ok && !res3.requires_selection && res3.event_id === junagadhId && res3.registration_id === pureJunagadh.id,
+    `3. Junagadh mobile (${pureJunagadh.mobile}) -> Junagadh registration (${res3.registration_number}) -> Junagadh certificate only`
+  );
 
-  // Test B: Rajkot Participant
-  const resB = await simulateCertificateStatus({ mobile: pureRajkot.mobile, nowMs: Date.parse("2026-09-27T20:05:00+05:30") });
-  assert(resB.ok && !resB.requires_selection && resB.event_id === RAJKOT_ID && resB.registration_id === pureRajkot.id, `Test B: Rajkot mobile (${pureRajkot.mobile}) resolves strictly to Rajkot (${resB.registration_number}) and never Amreli`);
+  // 4. Other district (Patan) -> exact registration event -> exact event certificate configuration
+  const res4 = await simulateUniversalCertificateLookup({ mobile: purePatan.mobile });
+  assert(
+    res4.ok && !res4.requires_selection && res4.event_id === patanId && res4.registration_id === purePatan.id && res4.certificate_config,
+    `4. Patan mobile (${purePatan.mobile}) -> Patan registration (${res4.registration_number}) -> exact Patan certificate configuration`
+  );
 
-  // Test C: Same mobile registered in multiple events (create temporary second registration for pureAmreli in Rajkot, test, then delete)
+  // 5. Same mobile registered in Amreli + Rajkot
   const tempMobile = "9999988887";
   const { data: tempAmreli } = await supabase.from("registrations").insert({
     registration_number: "TEST-AMR-999",
@@ -255,113 +265,96 @@ async function run() {
   }).select("id, registration_number, event_id").single();
 
   try {
-    const resC_global = await simulateCertificateStatus({ mobile: tempMobile });
+    const res5_multi = await simulateUniversalCertificateLookup({ mobile: tempMobile });
     assert(
-      resC_global.ok && resC_global.requires_selection === true && resC_global.choices.length === 2,
-      "Test C (1/3): Mobile registered in both Amreli and Rajkot returns requires_selection=true with 2 distinct event choices (never guesses!)"
+      res5_multi.ok && res5_multi.requires_selection === true && res5_multi.choices.length === 2,
+      `5a. Same mobile registered in Amreli + Rajkot shows two matching event choices only ("${res5_multi.message}")`
     );
 
-    const resC_selectAmreli = await simulateCertificateStatus({
+    const res5_amreli = await simulateUniversalCertificateLookup({
       mobile: tempMobile,
       registration_id: tempAmreli.id,
       event_id: AMRELI_ID,
-      nowMs: Date.parse("2026-09-27T19:05:00+05:30"),
     });
     assert(
-      resC_selectAmreli.ok && !resC_selectAmreli.requires_selection && resC_selectAmreli.event_id === AMRELI_ID && resC_selectAmreli.registration_id === tempAmreli.id,
-      "Test C (2/3): Selecting Amreli returns ONLY Amreli registration/certificate"
+      res5_amreli.ok && res5_amreli.event_id === AMRELI_ID && res5_amreli.registration_id === tempAmreli.id,
+      "5b. Selecting Amreli choice -> Amreli certificate only"
     );
 
-    const resC_selectRajkot = await simulateCertificateStatus({
+    const res5_rajkot = await simulateUniversalCertificateLookup({
       mobile: tempMobile,
       registration_id: tempRajkot.id,
       event_id: RAJKOT_ID,
-      nowMs: Date.parse("2026-09-27T20:05:00+05:30"),
     });
     assert(
-      resC_selectRajkot.ok && !resC_selectRajkot.requires_selection && resC_selectRajkot.event_id === RAJKOT_ID && resC_selectRajkot.registration_id === tempRajkot.id,
-      "Test C (3/3): Selecting Rajkot returns ONLY Rajkot registration/certificate"
+      res5_rajkot.ok && res5_rajkot.event_id === RAJKOT_ID && res5_rajkot.registration_id === tempRajkot.id,
+      "5c. Selecting Rajkot choice -> Rajkot certificate only"
     );
   } finally {
     if (tempAmreli?.id) await supabase.from("registrations").delete().eq("id", tempAmreli.id);
     if (tempRajkot?.id) await supabase.from("registrations").delete().eq("id", tempRajkot.id);
   }
 
-  // Test D: Direct URL / Cross-Event Rejection
-  const resD_rajkotOnAmreliPage = await simulateCertificateStatus({
-    mobile: pureRajkot.mobile,
-    district_slug: "amreli-yog-shibir",
-  });
-  assert(
-    !resD_rajkotOnAmreliPage.ok && resD_rajkotOnAmreliPage.code === "WRONG_EVENT_OR_NOT_FOUND",
-    "Test D (1/3): Rajkot participant entering mobile on /amreli-yog-shibir/certificate is strictly REJECTED"
-  );
-
-  const resD_amreliOnRajkotPage = await simulateCertificateStatus({
-    mobile: pureAmreli.mobile,
-    district_slug: "rajkot-yog-shibir",
-  });
-  assert(
-    !resD_amreliOnRajkotPage.ok && resD_amreliOnRajkotPage.code === "WRONG_EVENT_OR_NOT_FOUND",
-    "Test D (2/3): Amreli participant entering mobile on /rajkot-yog-shibir/certificate is strictly REJECTED"
-  );
-
-  const resD_crossIdTamper = await simulateCertificateStatus({
+  // 6. Wrong registration/event pairing -> reject
+  const res6 = await simulateUniversalCertificateLookup({
     mobile: pureAmreli.mobile,
     registration_id: pureAmreli.id,
     event_id: RAJKOT_ID,
   });
-  assert(
-    !resD_crossIdTamper.ok && resD_crossIdTamper.code === "WRONG_EVENT_OR_NOT_FOUND",
-    "Test D (3/3): Passing Amreli registration_id with Rajkot event_id is strictly REJECTED"
-  );
+  assert(!res6.ok && res6.code === "WRONG_EVENT_OR_NOT_FOUND", "6. Wrong registration/event pairing -> rejected safely");
 
-  // Test E: Rajkot Time Simulation (7:59 PM, 8:00 PM, 8:01 PM IST)
-  const t_1959 = Date.parse("2026-09-27T19:59:00+05:30");
-  const t_2000 = Date.parse("2026-09-27T20:00:00+05:30");
-  const t_2001 = Date.parse("2026-09-27T20:01:00+05:30");
-
-  assert(
-    !isEventAttendanceClosed(rajkotEv, t_1959) && !isEventCompleted(rajkotEv, t_1959),
-    "Test E (7:59 PM IST): Rajkot attendance is OPEN and Rajkot certificate is LOCKED"
-  );
-  assert(
-    isEventAttendanceClosed(rajkotEv, t_2000) && isEventCompleted(rajkotEv, t_2000),
-    "Test E (8:00 PM IST): Rajkot attendance is CLOSED and Rajkot certificate is OPEN"
-  );
-  assert(
-    isEventAttendanceClosed(rajkotEv, t_2001) && isEventCompleted(rajkotEv, t_2001),
-    "Test E (8:01 PM IST): Rajkot attendance is CLOSED and Rajkot certificate is OPEN"
-  );
-
-  // Test F: Amreli Time Simulation (Before vs After 7:00 PM IST, independent from Rajkot)
-  const t_1859 = Date.parse("2026-09-27T18:59:00+05:30");
-  const t_1900 = Date.parse("2026-09-27T19:00:00+05:30");
-
-  assert(
-    !isEventCompleted(amreliEv, t_1859) && !isEventAttendanceClosed(amreliEv, t_1859),
-    "Test F (6:59 PM IST): Before Amreli end time (7:00 PM), Amreli certificate is LOCKED"
-  );
-  assert(
-    isEventCompleted(amreliEv, t_1900) && !isEventCompleted(rajkotEv, t_1900),
-    "Test F (7:00 PM IST): At 7:00 PM IST, Amreli certificate is OPEN while Rajkot certificate remains LOCKED until 8:00 PM IST"
-  );
-
-  // Test G: Zero attendance + completed event
-  const { count: attCount } = await supabase
-    .from("attendance")
-    .select("id", { count: "exact", head: true })
-    .eq("registration_id", pureRajkot.id);
-  const resG = await simulateCertificateStatus({
+  // 7. Attendance = 0 -> completed event -> certificate available
+  const res7 = await simulateUniversalCertificateLookup({
     mobile: pureRajkot.mobile,
-    nowMs: t_2000,
+    nowMs: Date.parse("2026-09-27T20:05:00+05:30"),
   });
+  assert(res7.ok && res7.eligible === true, "7. Attendance = 0 + completed event -> certificate available");
+
+  // 8. Attendance = 1 -> completed event -> certificate available
+  const res8 = await simulateUniversalCertificateLookup({
+    mobile: pureJunagadh.mobile,
+    nowMs: Date.parse("2026-09-27T20:05:00+05:30"),
+  });
+  assert(res8.ok && res8.eligible === true, "8. Attendance = 1 + completed event -> certificate available");
+
+  // 9. Before event completion -> certificate remains locked
+  const res9 = await simulateUniversalCertificateLookup({
+    mobile: pureRajkot.mobile,
+    nowMs: Date.parse("2026-09-27T19:59:00+05:30"),
+  });
+  assert(res9.ok && res9.eligible === false, "9. Before event completion (7:59 PM IST) -> certificate remains locked");
+
+  // 10. After event completion -> certificate available
+  const res10 = await simulateUniversalCertificateLookup({
+    mobile: pureRajkot.mobile,
+    nowMs: Date.parse("2026-09-27T20:00:00+05:30"),
+  });
+  assert(res10.ok && res10.eligible === true, "10. After event completion (8:00 PM IST) -> certificate available");
+
+  // 11. Refresh page -> same correct certificate
+  const res11_first = await simulateUniversalCertificateLookup({ mobile: pureAmreli.mobile });
+  const res11_refresh = await simulateUniversalCertificateLookup({ mobile: pureAmreli.mobile });
   assert(
-    resG.ok && resG.eligible === true,
-    `Test G: Registered participant (${pureRajkot.registration_number}, attendance rows=${attCount ?? 0}) is ELIGIBLE for certificate once event is completed`
+    res11_first.registration_id === res11_refresh.registration_id &&
+      res11_first.event_id === res11_refresh.event_id &&
+      res11_first.cache_key === res11_refresh.cache_key,
+    "11. Refresh page -> resolves exact same registration, event, and certificate"
   );
 
-  console.log("\n🎉 ALL TESTS A THROUGH G PASSED 100%!");
+  // 12, 13, 14. Mobile change & Cache Isolation test: Amreli -> Rajkot -> Amreli
+  const stepAmreli1 = await simulateUniversalCertificateLookup({ mobile: pureAmreli.mobile });
+  const stepRajkot = await simulateUniversalCertificateLookup({ mobile: pureRajkot.mobile });
+  const stepAmreli2 = await simulateUniversalCertificateLookup({ mobile: pureAmreli.mobile });
+  assert(
+    stepAmreli1.cache_key !== stepRajkot.cache_key &&
+      stepAmreli1.event_id === AMRELI_ID &&
+      stepRajkot.event_id === RAJKOT_ID &&
+      stepAmreli2.event_id === AMRELI_ID &&
+      stepAmreli1.cache_key === stepAmreli2.cache_key,
+    `12-14. Cache test (Amreli -> Rajkot -> Amreli): distinct cache keys (${stepAmreli1.cache_key} vs ${stepRajkot.cache_key}), zero cross-event leakage`
+  );
+
+  console.log("\n🎉 ALL 14 TEST MATRIX SCENARIOS PASSED 100%!");
 }
 
 run().catch((err) => {

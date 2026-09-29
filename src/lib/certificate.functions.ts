@@ -156,9 +156,32 @@ export const certificateStatus = createServerFn({ method: "POST" })
         }
       }
 
+      const eventIds = Array.from(byEvent.keys());
+      const { data: eventRows } =
+        eventIds.length > 0
+          ? await supabaseAdmin.from("events").select("*").in("id", eventIds)
+          : { data: [] };
+
+      const { mergeConfig } = await import("@/lib/event-config");
+      const eventMap = new Map<string, ActiveEvent>();
+      for (const w of eventRows ?? []) {
+        const raw = w as any;
+        const cfg = mergeConfig(raw);
+        eventMap.set(raw.id, {
+          id: raw.id,
+          slug: raw.slug ?? null,
+          district: raw.district ?? raw.district_name ?? null,
+          district_id: raw.district_id ?? null,
+          event_date: raw.event_date ?? null,
+          lifecycle_status: raw.lifecycle_status ?? null,
+          status: raw.status ?? null,
+          config: { ...cfg, id: raw.id },
+        });
+      }
+
       const validChoices: Array<{ reg: typeof regRows[0]; event: ActiveEvent }> = [];
       for (const [evId, r] of byEvent.entries()) {
-        const ev = await loadEventById(evId);
+        const ev = eventMap.get(evId);
         if (ev) {
           validChoices.push({ reg: r, event: ev });
         }
@@ -208,9 +231,10 @@ export const certificateStatus = createServerFn({ method: "POST" })
       event = validChoices[0].event;
     }
 
-    if (!event || !reg || reg.event_id !== event.id) {
+    if (!event || !reg || !reg.id || reg.event_id !== event.id) {
       return {
         ok: false as const,
+        code: "WRONG_EVENT_OR_NOT_FOUND" as const,
         error: "આ નોંધણી આ શિબિર માટે નથી. (Registration or event mismatch.)",
       };
     }
@@ -223,6 +247,19 @@ export const certificateStatus = createServerFn({ method: "POST" })
       .eq("registration_number", reg.registration_number)
       .eq("event_id", event.id)
       .maybeSingle();
+
+    // Validate existing issue strictly matches registration.event_id + event.id
+    if (
+      existing &&
+      (((existing as any).event_id && (existing as any).event_id !== event.id) ||
+        (existing as any).registration_number !== reg.registration_number)
+    ) {
+      return {
+        ok: false as const,
+        code: "WRONG_EVENT_OR_NOT_FOUND" as const,
+        error: "આ નોંધણી આ શિબિર માટે નથી. (Certificate event mismatch.)",
+      };
+    }
 
     // Universal Eligibility: REGISTERED PARTICIPANT + THAT PARTICIPANT'S EVENT IS COMPLETED
     // Physical attendance / check-in is NOT required.
