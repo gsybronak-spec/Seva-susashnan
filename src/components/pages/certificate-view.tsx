@@ -87,6 +87,37 @@ function formatDate(dateISO: string | null): string {
   return d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
 }
 
+const GUJARATI_MONTHS = [
+  "જાન્યુઆરી",
+  "ફેબ્રુઆરી",
+  "માર્ચ",
+  "એપ્રિલ",
+  "મે",
+  "જૂન",
+  "જુલાઈ",
+  "ઓગસ્ટ",
+  "સપ્ટેમ્બર",
+  "ઓક્ટોબર",
+  "નવેમ્બર",
+  "ડિસેમ્બર",
+];
+
+function formatSelectionEventDate(dateISO: string | null, eventSlug?: string | null): string {
+  if (!dateISO || (eventSlug && eventSlug.trim().toLowerCase() === "kheda-yog-shibir")) {
+    return "Yet to be Declared";
+  }
+  const m = dateISO.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    const year = m[1];
+    const monthIndex = parseInt(m[2], 10) - 1;
+    const day = parseInt(m[3], 10);
+    if (monthIndex >= 0 && monthIndex < 12) {
+      return `${day} ${GUJARATI_MONTHS[monthIndex]} ${year}`;
+    }
+  }
+  return formatDate(dateISO);
+}
+
 const TEXT_ELEMENT_TYPES = new Set([
   "participant_name",
   "registration_number",
@@ -536,33 +567,57 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
 
       {status?.ok && status.requires_selection && (
         <div
-          className="mt-6 overflow-hidden rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-4"
+          className="mt-6 overflow-hidden rounded-2xl border border-border bg-card p-6 sm:p-8 shadow-sm space-y-5"
           data-testid="certificate-event-selector"
         >
-          <p className="text-center text-base font-bold text-brand-primary">
-            આ મોબાઇલ નંબરથી એકથી વધુ યોગ શિબિરમાં નોંધણી મળી છે.
-          </p>
+          <div className="space-y-1.5 text-center">
+            <p className="text-base font-bold text-brand-primary">
+              તમારા મોબાઇલ નંબર સાથે નીચેના કાર્યક્રમોમાં નોંધણી મળી છે.
+            </p>
+            <p className="text-sm font-medium text-muted-foreground">
+              કૃપા કરીને જે કાર્યક્રમનું પ્રમાણપત્ર ડાઉનલોડ કરવું છે તે પસંદ કરો.
+            </p>
+          </div>
 
           <div className="grid gap-3">
-            {status.choices.map((c) => (
-              <Button
-                key={c.registration_id}
-                type="button"
-                variant="outline"
-                size="lg"
-                onClick={() => void handleSelectChoice(c)}
-                disabled={loading}
-                data-testid={`select-event-btn-${c.registration_number}`}
-                className="h-auto py-4 px-5 flex items-center justify-between text-left border-border hover:border-brand-primary hover:bg-accent/40 rounded-xl"
-              >
-                <span className="font-bold text-base text-foreground">
-                  {c.event_title}
-                </span>
-                <span className="font-mono text-xs text-brand-primary font-semibold ml-3">
-                  {c.registration_number} →
-                </span>
-              </Button>
-            ))}
+            {status.choices.map((c) => {
+              const dateLabel = formatSelectionEventDate(c.event_date, c.event_slug);
+              return (
+                <button
+                  key={`${c.registration_id}:${c.event_id}`}
+                  type="button"
+                  onClick={() => void handleSelectChoice(c)}
+                  disabled={loading}
+                  data-testid={`select-event-btn-${c.event_slug || c.event_id}`}
+                  className="w-full rounded-xl border border-border bg-card p-4 text-left transition hover:border-brand-primary hover:bg-accent/40 focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:opacity-50"
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      aria-hidden="true"
+                      className="mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-brand-primary text-brand-primary"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-brand-primary opacity-70" />
+                    </span>
+                    <div className="flex-1 space-y-1">
+                      <div className="text-base font-bold text-foreground">
+                        {c.event_title}
+                        {c.district ? ` — ${c.district}` : ""}
+                        {` — ${dateLabel}`}
+                      </div>
+                      <div
+                        className={
+                          c.event_completed
+                            ? "text-sm font-semibold text-emerald-700"
+                            : "text-sm font-medium text-amber-700"
+                        }
+                      >
+                        {c.status_text}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

@@ -576,7 +576,7 @@ export const lookupCertificate = createServerFn({ method: "POST" })
       }
 
       if (!rows || rows.length === 0) {
-        return { ok: false as const, error: "No registration found for this number" };
+        return { ok: false as const, error: "આ મોબાઇલ નંબરથી કોઈ નોંધણી મળી નથી." };
       }
       if (rows.length > 1) {
         return {

@@ -884,6 +884,19 @@ export function formatCertificateNumber(
  * Strictly evaluated in Asia/Kolkata (+05:30) timezone.
  * Returns null if the scheduled end datetime cannot be reliably resolved.
  */
+export function isKhedaUndatedEvent(event: {
+  id?: string;
+  slug?: string | null;
+  lifecycle_status?: string | null;
+  status?: Partial<EventStatus> | null;
+}): boolean {
+  if (event.lifecycle_status === "completed" || event.status?.value === "completed") {
+    return false;
+  }
+  const slug = (event.slug || "").trim().toLowerCase();
+  return slug === "kheda-yog-shibir" || event.id === "b7d6413a-2fcd-4b40-a816-e7b5bd083653";
+}
+
 export function getEventEndTimestampMs(event: {
   id?: string;
   slug?: string | null;
@@ -892,6 +905,9 @@ export function getEventEndTimestampMs(event: {
   lifecycle_status?: string | null;
   status?: Partial<EventStatus> | null;
 }): number | null {
+  if (isKhedaUndatedEvent(event)) {
+    return null;
+  }
   const g = event.general ?? {};
   const dateStr = (g.end_date || g.event_date || event.event_date || "").trim();
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -1213,6 +1229,9 @@ export type EventStartInfo = {
  * Returns null if event_date cannot be determined.
  */
 export function getEventStartInfo(event: SortableAdminEvent): EventStartInfo | null {
+  if (isKhedaUndatedEvent(event as any)) {
+    return null;
+  }
   const g = event.general ?? {};
   const dateStr = (g.event_date || event.event_date || "").trim();
   if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
