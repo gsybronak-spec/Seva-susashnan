@@ -482,50 +482,110 @@ export const lookupCertificate = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const candidates = [
+        data.mobile,
+        `+91${data.mobile}`,
+        `91${data.mobile}`,
+        `0${data.mobile}`,
+        `+91 ${data.mobile}`,
+      ];
 
-    if (data.district_slug) {
-      const { resolveEvent } = await import("@/lib/event-resolver.server");
-      const resolved = await resolveEvent(data.district_slug);
-      if (!resolved?.event?.id) {
-        return { ok: false as const, error: "આ શિબિર મળી નથી." };
-      }
-      const event_id = resolved.event.id as string;
-      const { data: row } = await supabaseAdmin
-        .from("registrations")
-        .select("id, event_id, registration_number, full_name, certificate_available, certificate_url")
-        .eq("mobile", data.mobile)
-        .eq("event_id", event_id)
-        .maybeSingle();
+      if (data.district_slug) {
+        const { resolveEvent } = await import("@/lib/event-resolver.server");
+        const resolved = await resolveEvent(data.district_slug);
+        if (!resolved?.event?.id) {
+          return { ok: false as const, error: "આ શિબિર મળી નથી." };
+        }
+        const event_id = resolved.event.id as string;
+        const { data: row, error: err } = await supabaseAdmin
+          .from("registrations")
+          .select("id, event_id, registration_number, full_name, certificate_available, certificate_url")
+          .in("mobile", candidates)
+          .eq("event_id", event_id)
+          .maybeSingle();
 
-      if (!row) {
+        if (err) {
+          console.error("[lookupCertificate] DB error:", err);
+          return {
+            ok: false as const,
+            error: "પ્રમાણપત્ર શોધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
+          };
+        }
+
+        if (!row) {
+          return {
+            ok: false as const,
+            error: "આ નોંધણી આ શિબિર માટે નથી. (No registration found for this number in this event.)",
+          };
+        }
         return {
-          ok: false as const,
-          error: "આ નોંધણી આ શિબિર માટે નથી. (No registration found for this mobile number in this event.)",
+          ok: true as const,
+          registration_id: row.id,
+          event_id: row.event_id,
+          participant_name: row.full_name,
+          registration_number: row.registration_number,
+          available: row.certificate_available,
+          certificate_url: row.certificate_url,
         };
       }
-      return {
-        ok: true as const,
-        registration_id: row.id,
-        event_id: row.event_id,
-        participant_name: row.full_name,
-        registration_number: row.registration_number,
-        available: row.certificate_available,
-        certificate_url: row.certificate_url,
-      };
-    }
 
-    if (data.registration_id && data.event_id) {
-      const { data: row } = await supabaseAdmin
+      if (data.registration_id && data.event_id) {
+        const { data: row, error: err } = await supabaseAdmin
+          .from("registrations")
+          .select("id, event_id, registration_number, full_name, certificate_available, certificate_url")
+          .eq("id", data.registration_id)
+          .eq("event_id", data.event_id)
+          .in("mobile", candidates)
+          .maybeSingle();
+
+        if (err) {
+          console.error("[lookupCertificate] DB error:", err);
+          return {
+            ok: false as const,
+            error: "પ્રમાણપત્ર શોધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
+          };
+        }
+        if (!row) {
+          return { ok: false as const, error: "આ નોંધણી આ શિબિર માટે નથી." };
+        }
+        return {
+          ok: true as const,
+          registration_id: row.id,
+          event_id: row.event_id,
+          participant_name: row.full_name,
+          registration_number: row.registration_number,
+          available: row.certificate_available,
+          certificate_url: row.certificate_url,
+        };
+      }
+
+      const { data: rows, error: err } = await supabaseAdmin
         .from("registrations")
         .select("id, event_id, registration_number, full_name, certificate_available, certificate_url")
-        .eq("id", data.registration_id)
-        .eq("event_id", data.event_id)
-        .eq("mobile", data.mobile)
-        .maybeSingle();
-      if (!row) {
-        return { ok: false as const, error: "આ નોંધણી આ શિબિર માટે નથી." };
+        .in("mobile", candidates)
+        .order("created_at", { ascending: false });
+
+      if (err) {
+        console.error("[lookupCertificate] DB error:", err);
+        return {
+          ok: false as const,
+          error: "પ્રમાણપત્ર શોધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
+        };
       }
+
+      if (!rows || rows.length === 0) {
+        return { ok: false as const, error: "No registration found for this number" };
+      }
+      if (rows.length > 1) {
+        return {
+          ok: true as const,
+          requires_selection: true as const,
+          registrations: rows,
+        };
+      }
+      const row = rows[0];
       return {
         ok: true as const,
         registration_id: row.id,
@@ -535,34 +595,13 @@ export const lookupCertificate = createServerFn({ method: "POST" })
         available: row.certificate_available,
         certificate_url: row.certificate_url,
       };
-    }
-
-    const { data: rows } = await supabaseAdmin
-      .from("registrations")
-      .select("id, event_id, registration_number, full_name, certificate_available, certificate_url")
-      .eq("mobile", data.mobile)
-      .order("created_at", { ascending: false });
-
-    if (!rows || rows.length === 0) {
-      return { ok: false as const, error: "No registration found for this mobile number." };
-    }
-    if (rows.length > 1) {
+    } catch (err) {
+      console.error("[lookupCertificate] Unexpected exception:", err);
       return {
-        ok: true as const,
-        requires_selection: true as const,
-        registrations: rows,
+        ok: false as const,
+        error: "પ્રમાણપત્ર શોધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
       };
     }
-    const row = rows[0];
-    return {
-      ok: true as const,
-      registration_id: row.id,
-      event_id: row.event_id,
-      participant_name: row.full_name,
-      registration_number: row.registration_number,
-      available: row.certificate_available,
-      certificate_url: row.certificate_url,
-    };
   });
 
 // ---------------- Public Referral Code Lookup ----------------

@@ -60,10 +60,24 @@ export type CertificateViewProps = {
 };
 
 function normalizeClientMobile10(raw: string): string {
-  const digits = raw.replace(/[\s\-().+]/g, "").replace(/\D/g, "");
+  const digits = String(raw || "")
+    .replace(/[\s\-().+]/g, "")
+    .replace(/\D/g, "");
   if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
   if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+  if (digits.length > 10) return digits.slice(-10);
   return digits.slice(0, 10);
+}
+
+function sanitizeMobileInput(raw: string): string {
+  const cleaned = String(raw || "").replace(/[^\d+\s\-().]/g, "").slice(0, 18);
+  const digits = cleaned.replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
+  if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+  if (!cleaned.trim().startsWith("+") && !digits.startsWith("91") && !digits.startsWith("0")) {
+    return digits.slice(0, 10);
+  }
+  return cleaned;
 }
 
 function formatDate(dateISO: string | null): string {
@@ -420,6 +434,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
       toast.error("કૃપા કરીને માન્ય 10-અંકનો મોબાઇલ નંબર દાખલ કરો.");
       return;
     }
+    setMobile(mob);
     setChoicesList([]);
     await executeCertificateQuery({ mob });
   }
@@ -427,6 +442,7 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
   async function handleSelectChoice(choice: CertificateEventChoice) {
     const mob = normalizeClientMobile10(mobile);
     if (!/^[6-9]\d{9}$/.test(mob)) return;
+    setMobile(mob);
     await executeCertificateQuery({
       mob,
       registration_id: choice.registration_id,
@@ -484,11 +500,11 @@ export function CertificateView({ eventSlug }: CertificateViewProps) {
             <Label htmlFor="mobile">તમારો મોબાઇલ નંબર દાખલ કરો</Label>
             <Input
               id="mobile"
-              inputMode="numeric"
+              inputMode="tel"
               placeholder="તમારો મોબાઇલ નંબર દાખલ કરો"
               value={mobile}
               onChange={(e) => {
-                const nextMob = normalizeClientMobile10(e.target.value);
+                const nextMob = sanitizeMobileInput(e.target.value);
                 setMobile(nextMob);
                 // Immediately clear previous certificate & cache when mobile changes
                 if (status || render || choicesList.length > 0) {

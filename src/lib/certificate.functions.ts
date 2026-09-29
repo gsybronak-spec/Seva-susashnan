@@ -24,7 +24,14 @@ export function normalizeCertificateMobile(raw: string): string {
   if (digits.length === 11 && digits.startsWith("0")) {
     return digits.slice(1);
   }
+  if (digits.length > 10) {
+    return digits.slice(-10);
+  }
   return digits;
+}
+
+function getMobileCandidates(norm10: string): string[] {
+  return [norm10, `+91${norm10}`, `91${norm10}`, `0${norm10}`, `+91 ${norm10}`];
 }
 
 export type CertificateEventChoice = {
@@ -38,6 +45,9 @@ export type CertificateEventChoice = {
   event_date: string | null;
   event_completed: boolean;
 };
+
+const SERVER_QUERY_ERROR_MSG = "પ્રમાણપત્ર શોધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.";
+const ZERO_ROWS_ERROR_MSG = "No registration found for this number";
 
 // ---------------- Public: participant status + auto-issue ----------------
 // Universal Eligibility Rule:
@@ -59,194 +69,234 @@ export const certificateStatus = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const candidates = getMobileCandidates(data.mobile);
 
-    let event: ActiveEvent | null = null;
-    let reg: {
-      id: string;
-      registration_number: string;
-      full_name: string;
-      mobile: string;
-      district?: string | null;
-      event_id: string;
-    } | null = null;
+      let event: ActiveEvent | null = null;
+      let reg: {
+        id: string;
+        registration_number: string;
+        full_name: string;
+        mobile: string;
+        district?: string | null;
+        event_id: string;
+      } | null = null;
 
-    // CASE 1: Event-specific route (e.g. /amreli-yog-shibir/certificate or /rajkot-yog-shibir/certificate)
-    if (data.district_slug) {
-      event = await loadCertificateEvent(data.district_slug);
-      if (!event) {
-        return { ok: false as const, error: "આ શિબિર મળી નથી. (Event not found.)" };
-      }
+      // CASE 1: Event-specific route (when district_slug is explicitly passed)
+      if (data.district_slug) {
+        event = await loadCertificateEvent(data.district_slug);
+        if (!event) {
+          return { ok: false as const, error: "આ શિબિર મળી નથી. (Event not found.)" };
+        }
 
-      let query = supabaseAdmin
-        .from("registrations")
-        .select("id, registration_number, full_name, mobile, district, event_id, created_at")
-        .eq("mobile", data.mobile)
-        .eq("event_id", event.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (data.registration_id) {
-        query = supabaseAdmin
+        let query = supabaseAdmin
           .from("registrations")
           .select("id, registration_number, full_name, mobile, district, event_id, created_at")
-          .eq("id", data.registration_id)
-          .eq("mobile", data.mobile)
+          .in("mobile", candidates)
           .eq("event_id", event.id)
+          .order("created_at", { ascending: false })
           .limit(1);
+
+        if (data.registration_id) {
+          query = supabaseAdmin
+            .from("registrations")
+            .select("id, registration_number, full_name, mobile, district, event_id, created_at")
+            .eq("id", data.registration_id)
+            .in("mobile", candidates)
+            .eq("event_id", event.id)
+            .limit(1);
+        }
+
+        const { data: regRows, error: regErr } = await query;
+        if (regErr) {
+          console.error("[certificateStatus] DB error in district_slug query:", regErr);
+          return { ok: false as const, code: "DB_ERROR" as const, error: SERVER_QUERY_ERROR_MSG };
+        }
+
+        const regRow = regRows?.[0] ?? null;
+        if (!regRow || regRow.event_id !== event.id) {
+          return {
+            ok: false as const,
+            code: "WRONG_EVENT_OR_NOT_FOUND" as const,
+            error: "આ નોંધણી આ શિબિર માટે નથી. (No registration found for this number in this event.)",
+          };
+        }
+        reg = regRow;
+      }
+      // CASE 2: Explicit (registration_id + event_id) selection on global /certificate route
+      else if (data.registration_id && data.event_id) {
+        event = await loadEventById(data.event_id);
+        if (!event) {
+          return { ok: false as const, error: "આ શિબિર મળી નથી. (Event not found.)" };
+        }
+
+        const { data: regRow, error: regErr } = await supabaseAdmin
+          .from("registrations")
+          .select("id, registration_number, full_name, mobile, district, event_id")
+          .eq("id", data.registration_id)
+          .eq("event_id", data.event_id)
+          .in("mobile", candidates)
+          .maybeSingle();
+
+        if (regErr) {
+          console.error("[certificateStatus] DB error in explicit reg+event query:", regErr);
+          return { ok: false as const, code: "DB_ERROR" as const, error: SERVER_QUERY_ERROR_MSG };
+        }
+
+        if (!regRow || regRow.event_id !== event.id) {
+          return {
+            ok: false as const,
+            code: "WRONG_EVENT_OR_NOT_FOUND" as const,
+            error: "આ નોંધણી આ શિબિર માટે નથી. (This registration does not belong to this event.)",
+          };
+        }
+        reg = regRow;
+      }
+      // CASE 3: Global /certificate route — lookup across all events strictly by mobile
+      else {
+        const { data: regRows, error: regErr } = await supabaseAdmin
+          .from("registrations")
+          .select("id, registration_number, full_name, mobile, district, event_id, created_at")
+          .in("mobile", candidates)
+          .order("created_at", { ascending: false });
+
+        if (regErr) {
+          console.error("[certificateStatus] DB error querying registrations by mobile:", regErr);
+          return {
+            ok: false as const,
+            code: "DB_ERROR" as const,
+            error: SERVER_QUERY_ERROR_MSG,
+          };
+        }
+
+        if (!regRows || regRows.length === 0) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND" as const,
+            error: ZERO_ROWS_ERROR_MSG,
+          };
+        }
+
+        // Deduplicate by event_id (keep the latest registration per distinct event_id)
+        const byEvent = new Map<string, typeof regRows[0]>();
+        for (const r of regRows) {
+          if (!r.event_id) continue;
+          if (!byEvent.has(r.event_id)) {
+            byEvent.set(r.event_id, r);
+          }
+        }
+
+        const eventIds = Array.from(byEvent.keys());
+        const { data: eventRows, error: evErr } =
+          eventIds.length > 0
+            ? await supabaseAdmin.from("events").select("*").in("id", eventIds)
+            : { data: [], error: null };
+
+        if (evErr) {
+          console.error("[certificateStatus] DB error loading events for registration:", evErr);
+          return {
+            ok: false as const,
+            code: "DB_ERROR" as const,
+            error: SERVER_QUERY_ERROR_MSG,
+          };
+        }
+
+        const { mergeConfig } = await import("@/lib/event-config");
+        const eventMap = new Map<string, ActiveEvent>();
+        for (const w of eventRows ?? []) {
+          const raw = w as any;
+          const cfg = mergeConfig(raw);
+          eventMap.set(raw.id, {
+            id: raw.id,
+            slug: raw.slug ?? null,
+            district: raw.district ?? raw.district_name ?? null,
+            district_id: raw.district_id ?? null,
+            event_date: raw.event_date ?? null,
+            lifecycle_status: raw.lifecycle_status ?? null,
+            status: raw.status ?? null,
+            config: { ...cfg, id: raw.id },
+          });
+        }
+
+        const validChoices: Array<{ reg: typeof regRows[0]; event: ActiveEvent }> = [];
+        for (const [evId, r] of byEvent.entries()) {
+          const ev = eventMap.get(evId);
+          if (ev) {
+            validChoices.push({ reg: r, event: ev });
+          }
+        }
+
+        if (validChoices.length === 0) {
+          return {
+            ok: false as const,
+            code: "NOT_FOUND" as const,
+            error: ZERO_ROWS_ERROR_MSG,
+          };
+        }
+
+        // CRITICAL: If the mobile number is registered in MULTIPLE events (e.g. both Amreli and Rajkot),
+        // NEVER guess or auto-pick! Return the event selection list so the participant explicitly chooses.
+        if (validChoices.length > 1) {
+          const choices: CertificateEventChoice[] = validChoices.map(({ reg: r, event: ev }) => {
+            const isComp = isEventCompleted({
+              id: ev.id,
+              slug: ev.slug,
+              general: ev.config.general,
+              event_date: ev.event_date ?? ev.config.general.event_date,
+              lifecycle_status: ev.lifecycle_status,
+              status: ev.status,
+            });
+            return {
+              registration_id: r.id,
+              registration_number: r.registration_number,
+              full_name: r.full_name,
+              event_id: ev.id,
+              event_slug: ev.slug ?? null,
+              event_title: ev.config.general.title,
+              district: (r.district && r.district.trim()) || ev.district || "",
+              event_date: ev.event_date ?? ev.config.general.event_date ?? null,
+              event_completed: isComp,
+            };
+          });
+
+          return {
+            ok: true as const,
+            requires_selection: true as const,
+            choices,
+          };
+        }
+
+        // Exactly 1 event registration exists for this mobile number -> resolve that exact (reg, event)
+        reg = validChoices[0].reg;
+        event = validChoices[0].event;
       }
 
-      const { data: regRows } = await query;
-      const regRow = regRows?.[0] ?? null;
-
-      if (!regRow || regRow.event_id !== event.id) {
+      if (!event || !reg || !reg.id || reg.event_id !== event.id) {
         return {
           ok: false as const,
           code: "WRONG_EVENT_OR_NOT_FOUND" as const,
-          error: "આ નોંધણી આ શિબિર માટે નથી. (No registration found for this mobile number in this event.)",
+          error: "આ નોંધણી આ શિબિર માટે નથી. (Registration or event mismatch.)",
         };
       }
-      reg = regRow;
-    }
-    // CASE 2: Explicit (registration_id + event_id) selection on global /certificate route
-    else if (data.registration_id && data.event_id) {
-      event = await loadEventById(data.event_id);
-      if (!event) {
-        return { ok: false as const, error: "આ શિબિર મળી નથી. (Event not found.)" };
-      }
 
-      const { data: regRow } = await supabaseAdmin
-        .from("registrations")
-        .select("id, registration_number, full_name, mobile, district, event_id")
-        .eq("id", data.registration_id)
-        .eq("event_id", data.event_id)
-        .eq("mobile", data.mobile)
+      const cert = event.config.certificate;
+
+      const { data: existing, error: existErr } = await supabaseAdmin
+        .from("certificate_issues")
+        .select("*")
+        .eq("registration_number", reg.registration_number)
+        .eq("event_id", event.id)
         .maybeSingle();
 
-      if (!regRow || regRow.event_id !== event.id) {
+      if (existErr) {
+        console.error("[certificateStatus] DB error checking certificate_issues:", existErr);
         return {
           ok: false as const,
-          code: "WRONG_EVENT_OR_NOT_FOUND" as const,
-          error: "આ નોંધણી આ શિબિર માટે નથી. (This registration does not belong to this event.)",
+          code: "DB_ERROR" as const,
+          error: SERVER_QUERY_ERROR_MSG,
         };
       }
-      reg = regRow;
-    }
-    // CASE 3: Global /certificate route without district_slug or explicit selection
-    else {
-      const { data: regRows } = await supabaseAdmin
-        .from("registrations")
-        .select("id, registration_number, full_name, mobile, district, event_id, created_at")
-        .eq("mobile", data.mobile)
-        .order("created_at", { ascending: false });
-
-      if (!regRows || regRows.length === 0) {
-        return {
-          ok: false as const,
-          error: "આ મોબાઈલ નંબર પર કોઈ રજીસ્ટ્રેશન મળ્યું નથી. (No registration found for this mobile number.)",
-        };
-      }
-
-      // Deduplicate by event_id (keep the latest registration per distinct event_id)
-      const byEvent = new Map<string, typeof regRows[0]>();
-      for (const r of regRows) {
-        if (!r.event_id) continue;
-        if (!byEvent.has(r.event_id)) {
-          byEvent.set(r.event_id, r);
-        }
-      }
-
-      const eventIds = Array.from(byEvent.keys());
-      const { data: eventRows } =
-        eventIds.length > 0
-          ? await supabaseAdmin.from("events").select("*").in("id", eventIds)
-          : { data: [] };
-
-      const { mergeConfig } = await import("@/lib/event-config");
-      const eventMap = new Map<string, ActiveEvent>();
-      for (const w of eventRows ?? []) {
-        const raw = w as any;
-        const cfg = mergeConfig(raw);
-        eventMap.set(raw.id, {
-          id: raw.id,
-          slug: raw.slug ?? null,
-          district: raw.district ?? raw.district_name ?? null,
-          district_id: raw.district_id ?? null,
-          event_date: raw.event_date ?? null,
-          lifecycle_status: raw.lifecycle_status ?? null,
-          status: raw.status ?? null,
-          config: { ...cfg, id: raw.id },
-        });
-      }
-
-      const validChoices: Array<{ reg: typeof regRows[0]; event: ActiveEvent }> = [];
-      for (const [evId, r] of byEvent.entries()) {
-        const ev = eventMap.get(evId);
-        if (ev) {
-          validChoices.push({ reg: r, event: ev });
-        }
-      }
-
-      if (validChoices.length === 0) {
-        return {
-          ok: false as const,
-          error: "આ મોબાઈલ નંબર પર કોઈ સક્રિય શિબિર રજીસ્ટ્રેશન મળ્યું નથી.",
-        };
-      }
-
-      // CRITICAL: If the mobile number is registered in MULTIPLE events (e.g. both Amreli and Rajkot),
-      // NEVER guess or auto-pick! Return the event selection list so the participant explicitly chooses.
-      if (validChoices.length > 1) {
-        const choices: CertificateEventChoice[] = validChoices.map(({ reg: r, event: ev }) => {
-          const isComp = isEventCompleted({
-            id: ev.id,
-            slug: ev.slug,
-            general: ev.config.general,
-            event_date: ev.event_date ?? ev.config.general.event_date,
-            lifecycle_status: ev.lifecycle_status,
-            status: ev.status,
-          });
-          return {
-            registration_id: r.id,
-            registration_number: r.registration_number,
-            full_name: r.full_name,
-            event_id: ev.id,
-            event_slug: ev.slug ?? null,
-            event_title: ev.config.general.title,
-            district: (r.district && r.district.trim()) || ev.district || "",
-            event_date: ev.event_date ?? ev.config.general.event_date ?? null,
-            event_completed: isComp,
-          };
-        });
-
-        return {
-          ok: true as const,
-          requires_selection: true as const,
-          choices,
-        };
-      }
-
-      // Exactly 1 event registration exists for this mobile number -> resolve that exact (reg, event)
-      reg = validChoices[0].reg;
-      event = validChoices[0].event;
-    }
-
-    if (!event || !reg || !reg.id || reg.event_id !== event.id) {
-      return {
-        ok: false as const,
-        code: "WRONG_EVENT_OR_NOT_FOUND" as const,
-        error: "આ નોંધણી આ શિબિર માટે નથી. (Registration or event mismatch.)",
-      };
-    }
-
-    const cert = event.config.certificate;
-
-    const { data: existing } = await supabaseAdmin
-      .from("certificate_issues")
-      .select("*")
-      .eq("registration_number", reg.registration_number)
-      .eq("event_id", event.id)
-      .maybeSingle();
 
     // Validate existing issue strictly matches registration.event_id + event.id
     if (
@@ -327,29 +377,37 @@ export const certificateStatus = createServerFn({ method: "POST" })
       };
     }
 
-    return {
-      ok: true as const,
-      requires_selection: false as const,
-      registration_id: reg.id,
-      event_id: event.id,
-      event_slug: event.slug ?? null,
-      district: (reg.district && reg.district.trim()) || event.district || "",
-      participant_name: reg.full_name,
-      registration_number: reg.registration_number,
-      event_title: event.config.general.title,
-      event_completed: completed,
-      joined: true,
-      eligible,
-      certificate_enabled: true,
-      issue: issue
-        ? {
-            certificate_number: (issue as { certificate_number: string }).certificate_number,
-            status: (issue as { status: string }).status,
-            issued_at: (issue as { issued_at: string | null }).issued_at,
-          }
-        : null,
-      render_payload,
-    };
+      return {
+        ok: true as const,
+        requires_selection: false as const,
+        registration_id: reg.id,
+        event_id: event.id,
+        event_slug: event.slug ?? null,
+        district: (reg.district && reg.district.trim()) || event.district || "",
+        participant_name: reg.full_name,
+        registration_number: reg.registration_number,
+        event_title: event.config.general.title,
+        event_completed: completed,
+        joined: true,
+        eligible,
+        certificate_enabled: true,
+        issue: issue
+          ? {
+              certificate_number: (issue as { certificate_number: string }).certificate_number,
+              status: (issue as { status: string }).status,
+              issued_at: (issue as { issued_at: string | null }).issued_at,
+            }
+          : null,
+        render_payload,
+      };
+    } catch (err) {
+      console.error("[certificateStatus] Unexpected server exception:", err);
+      return {
+        ok: false as const,
+        code: "SERVER_ERROR" as const,
+        error: SERVER_QUERY_ERROR_MSG,
+      };
+    }
   });
 
 
