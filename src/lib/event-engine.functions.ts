@@ -3,7 +3,12 @@ import { useSession } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
 
-import { VADODARA_EVENT_ID, isEventAttendanceClosed } from "@/lib/event-config";
+import {
+  VADODARA_EVENT_ID,
+  isEventAttendanceClosed,
+  normalizeIndianMobile,
+  buildMobileLookupCandidates,
+} from "@/lib/event-config";
 
 const scannerSessionConfig = () => {
   const password = process.env.SESSION_SECRET;
@@ -1004,7 +1009,7 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
         event_id: participantEventId,
         event_title: eventTitle,
         district: participantArea,
-        error: "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે. (Attendance Closed / Event Completed)",
+        error: "આ યોગ શિબિરની હાજરી નોંધણીનો સમય પૂર્ણ થઈ ગયો છે.",
       };
     }
 
@@ -1022,7 +1027,11 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
 
     if (rpcResult.error || !rpcResult.data?.[0]) {
       console.error("[operatorCheckIn] RPC error:", rpcResult.error);
-      return { ok: false as const, state: "error" as const, error: "હાજરી નોંધવામાં ક્ષતિ આવી. ફરી પ્રયાસ કરો." };
+      return {
+        ok: false as const,
+        state: "error" as const,
+        error: "હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
+      };
     }
 
     const result = rpcResult.data[0] as { result: string; original_check_in: string };
@@ -1045,6 +1054,10 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
     return {
       ok: true as const,
       state: result.result === "duplicate" ? ("duplicate" as const) : ("success" as const),
+      message:
+        result.result === "duplicate"
+          ? "આ સદસ્યની હાજરી પહેલેથી નોંધાઈ ગઈ છે."
+          : "હાજરી સફળતાપૂર્વક નોંધાઈ ગઈ છે.",
       participant_name: reg.full_name,
       participant_id: reg.registration_number,
       event_id: participantEventId,
@@ -1058,25 +1071,13 @@ export const operatorCheckIn = createServerFn({ method: "POST" })
 
 export const scannerCheckIn = operatorCheckIn;
 
-export function normalizeIndianMobile(raw: string): string | null {
-  const digits = raw.replace(/[\s\-().+]/g, "").replace(/\D/g, "");
-  let clean = digits;
-  if (clean.length === 12 && clean.startsWith("91")) {
-    clean = clean.slice(2);
-  } else if (clean.length === 11 && clean.startsWith("0")) {
-    clean = clean.slice(1);
-  }
-  if (/^[6-9]\d{9}$/.test(clean)) {
-    return clean;
-  }
-  return null;
-}
+export { normalizeIndianMobile };
 
 export const operatorSearchParticipants = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        query: z.string().trim().min(2).max(120),
+        query: z.string().trim().min(1).max(120),
         target_event_id: z.string().uuid().optional(),
       })
       .parse(input),
@@ -1103,22 +1104,21 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
     const rawTrimmed = data.query.trim();
     const normalizedMobile = normalizeIndianMobile(rawTrimmed);
 
-    // Universal cross-event lookup: DO NOT restrict by scanner URL or session event_id!
+    // Universal cross-event lookup: NEVER restrict by scannerSession.event_id, is_active, district, or URL!
     let rows: any[] | null = null;
     let error: any = null;
 
     if (normalizedMobile) {
-      // Fast direct indexed lookup by 10-digit mobile number across all events
+      const candidates = buildMobileLookupCandidates(normalizedMobile);
       const res = await supabaseAdmin
         .from("registrations")
         .select("id, registration_number, full_name, mobile, district, taluka, event_id, custom_fields, created_at")
-        .eq("mobile", normalizedMobile)
+        .in("mobile", candidates)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(30);
       rows = res.data;
       error = res.error;
     } else if (/^[A-Za-z]{2,6}[-_]?\d{3,10}$/.test(rawTrimmed)) {
-      // Direct lookup by registration number
       const cleanReg = rawTrimmed.replace(/[-_\s]/g, "").toUpperCase();
       const res = await supabaseAdmin
         .from("registrations")
@@ -1127,6 +1127,25 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
         .limit(10);
       rows = res.data;
       error = res.error;
+    } else if (/^[\d\s\-().+\u0AE6-\u0AEF\u0966-\u096F]+$/.test(rawTrimmed)) {
+      // User entered digits/phone symbols that do not normalize to a valid 10-digit Indian mobile number
+      console.info(
+        JSON.stringify({
+          tag: "ManualAttendanceSearch",
+          raw_input: rawTrimmed,
+          normalized_mobile: null,
+          matching_registrations_count: 0,
+          matched_registration_ids: [],
+          matched_event_ids: [],
+          error_code: "INVALID_MOBILE_FORMAT",
+        }),
+      );
+      return {
+        ok: true as const,
+        rows: [],
+        code: "NOT_REGISTERED" as const,
+        message: "આ મોબાઇલ નંબરથી કોઈ નોંધણી મળી નથી.",
+      };
     } else {
       const safe = rawTrimmed.replace(/[%_\\]/g, "\\$&");
       const res = await supabaseAdmin
@@ -1139,22 +1158,67 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
     }
 
     if (error) {
-      return { ok: false as const, error: error.message, rows: [] };
+      console.error(
+        JSON.stringify({
+          tag: "ManualAttendanceSearch",
+          raw_input: rawTrimmed,
+          normalized_mobile: normalizedMobile,
+          matching_registrations_count: 0,
+          error_code: "DB_SEARCH_ERROR",
+          db_error: error.message,
+        }),
+      );
+      return {
+        ok: false as const,
+        code: "DB_ERROR" as const,
+        error: "હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
+        rows: [],
+      };
     }
 
-    const matchedRows = rows ?? [];
-    if (matchedRows.length === 0) {
-      return { ok: true as const, rows: [] };
-    }
+    // Deduplicate rows by registration id
+    const seenIds = new Set<string>();
+    const matchedRows = (rows ?? []).filter((r) => {
+      if (!r?.id || seenIds.has(r.id)) return false;
+      seenIds.add(r.id);
+      return true;
+    });
 
     const regIds = matchedRows.map((r) => r.id);
+    const regNos = Array.from(new Set(matchedRows.map((r) => r.registration_number).filter(Boolean)));
     const eventIds = Array.from(new Set(matchedRows.map((r) => r.event_id).filter(Boolean)));
 
-    const [attendedRes, eventsRes] = await Promise.all([
+    console.info(
+      JSON.stringify({
+        tag: "ManualAttendanceSearch",
+        normalized_mobile: normalizedMobile || rawTrimmed,
+        matching_registrations_count: matchedRows.length,
+        matched_registration_ids: regIds,
+        matched_event_ids: eventIds,
+        error_code: matchedRows.length === 0 ? "NOT_REGISTERED" : null,
+      }),
+    );
+
+    if (matchedRows.length === 0) {
+      return {
+        ok: true as const,
+        rows: [],
+        code: "NOT_REGISTERED" as const,
+        message: "આ મોબાઇલ નંબરથી કોઈ નોંધણી મળી નથી.",
+      };
+    }
+
+    const [attendedByIdRes, attendedByRegNoRes, eventsRes] = await Promise.all([
       supabaseAdmin
         .from("attendance")
-        .select("registration_id, check_in_time")
+        .select("registration_id, event_id, registration_number, check_in_time")
         .in("registration_id", regIds),
+      regNos.length > 0
+        ? supabaseAdmin
+            .from("attendance")
+            .select("registration_id, event_id, registration_number, check_in_time")
+            .in("registration_number", regNos)
+        : Promise.resolve({ data: [] }),
       eventIds.length > 0
         ? supabaseAdmin
             .from("events")
@@ -1163,51 +1227,84 @@ export const operatorSearchParticipants = createServerFn({ method: "POST" })
         : Promise.resolve({ data: [] }),
     ]);
 
-    const attendedMap = new Map<string, string>();
-    (attendedRes.data ?? []).forEach((a: any) => {
-      if (a.registration_id) attendedMap.set(a.registration_id, a.check_in_time);
-    });
+    const attendedByRegIdMap = new Map<string, string>();
+    const attendedByEventAndRegNoMap = new Map<string, string>();
+    for (const a of [...(attendedByIdRes.data ?? []), ...(attendedByRegNoRes.data ?? [])] as any[]) {
+      if (a.registration_id && a.check_in_time) {
+        attendedByRegIdMap.set(a.registration_id, a.check_in_time);
+      }
+      if (a.event_id && a.registration_number && a.check_in_time) {
+        attendedByEventAndRegNoMap.set(`${a.event_id}:${a.registration_number}`, a.check_in_time);
+      }
+    }
 
-    const eventMap = new Map<string, { title: string; district: string; attendance_closed: boolean }>();
+    const eventMap = new Map<
+      string,
+      { title: string; district: string; event_date: string; attendance_closed: boolean }
+    >();
     (eventsRes.data ?? []).forEach((ev: any) => {
       const gen = (ev.general ?? {}) as Record<string, unknown>;
       const dist = (ev.district as string) || "";
       const title =
         (typeof gen.title === "string" && gen.title.trim()) ||
         (dist ? `${dist} યોગ શિબિર` : "ગુજરાત રાજ્ય યોગ બોર્ડ યોગ શિબિર");
+      const rawDate =
+        (typeof gen.event_date === "string" && gen.event_date.trim()) ||
+        (typeof ev.event_date === "string" && ev.event_date.trim()) ||
+        "";
       eventMap.set(ev.id, {
         title,
         district: dist,
+        event_date: rawDate,
         attendance_closed: isEventAttendanceClosed(ev as any),
       });
     });
 
+    const mappedRows = matchedRows.map((r) => {
+      const cf = (r.custom_fields ?? {}) as Record<string, unknown>;
+      const evInfo = eventMap.get(r.event_id);
+      const area =
+        (evInfo?.district && evInfo.district.trim()) ||
+        (r.district && String(r.district).trim()) ||
+        (typeof cf.district === "string" && cf.district.trim()) ||
+        (typeof cf.municipal_zone === "string" && cf.municipal_zone.trim()) ||
+        (r.taluka && String(r.taluka).trim()) ||
+        "";
+      const checkInTime =
+        attendedByRegIdMap.get(r.id) ??
+        attendedByEventAndRegNoMap.get(`${r.event_id}:${r.registration_number}`) ??
+        null;
+      return {
+        id: r.id,
+        registration_number: r.registration_number,
+        full_name: r.full_name,
+        mobile: normalizeIndianMobile(r.mobile) || r.mobile,
+        district: area,
+        event_id: r.event_id,
+        event_title: evInfo?.title || "યોગ શિબિર",
+        event_date: evInfo?.event_date || "",
+        custom_fields: r.custom_fields,
+        is_attended: Boolean(checkInTime),
+        check_in_time: checkInTime,
+        attendance_closed: evInfo?.attendance_closed ?? false,
+      };
+    });
+
+    // Sort active/ongoing events first, then by event_date ascending (nearest event first)
+    mappedRows.sort((a, b) => {
+      if (a.attendance_closed !== b.attendance_closed) {
+        return a.attendance_closed ? 1 : -1;
+      }
+      if (a.event_date && b.event_date && a.event_date !== b.event_date) {
+        return a.event_date.localeCompare(b.event_date);
+      }
+      return 0;
+    });
+
     return {
       ok: true as const,
-      rows: matchedRows.map((r) => {
-        const cf = (r.custom_fields ?? {}) as Record<string, unknown>;
-        const evInfo = eventMap.get(r.event_id);
-        const area =
-          (r.district && String(r.district).trim()) ||
-          (typeof cf.district === "string" && cf.district.trim()) ||
-          (typeof cf.municipal_zone === "string" && cf.municipal_zone.trim()) ||
-          (r.taluka && String(r.taluka).trim()) ||
-          evInfo?.district ||
-          "";
-        return {
-          id: r.id,
-          registration_number: r.registration_number,
-          full_name: r.full_name,
-          mobile: r.mobile,
-          district: area,
-          event_id: r.event_id,
-          event_title: evInfo?.title || "યોગ શિબિર",
-          custom_fields: r.custom_fields,
-          is_attended: attendedMap.has(r.id),
-          check_in_time: attendedMap.get(r.id) ?? null,
-          attendance_closed: evInfo?.attendance_closed ?? false,
-        };
-      }),
+      multiple_registrations: mappedRows.length > 1,
+      rows: mappedRows,
     };
   });
 
@@ -1216,6 +1313,7 @@ export const operatorManualCheckIn = createServerFn({ method: "POST" })
     z
       .object({
         registration_id: z.string().uuid(),
+        event_id: z.string().uuid().optional(),
         target_event_id: z.string().uuid().optional(),
       })
       .parse(input),
@@ -1244,16 +1342,71 @@ export const operatorManualCheckIn = createServerFn({ method: "POST" })
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const requestedEventId = data.event_id || data.target_event_id;
 
-    // Look up registration to determine authoritative event_id
+    // Look up registration to determine authoritative event_id and participant fields
     const { data: reg, error: regErr } = await supabaseAdmin
       .from("registrations")
-      .select("id, full_name, registration_number, event_id, district, taluka, custom_fields")
+      .select("id, full_name, mobile, registration_number, event_id, district, district_id, taluka, custom_fields")
       .eq("id", data.registration_id)
       .maybeSingle();
 
-    if (regErr || !reg) {
-      return { ok: false as const, error: "ભાગ લેનાર મળ્યા નથી." };
+    if (regErr) {
+      console.error(
+        JSON.stringify({
+          tag: "ManualAttendanceCheckIn",
+          selected_registration_id: data.registration_id,
+          selected_event_id: requestedEventId ?? null,
+          attendance_check_result: "error",
+          error_code: "DB_LOOKUP_ERROR",
+          db_error: regErr.message,
+        }),
+      );
+      return {
+        ok: false as const,
+        state: "error" as const,
+        code: "DB_ERROR" as const,
+        error: "હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
+      };
+    }
+
+    if (!reg) {
+      console.warn(
+        JSON.stringify({
+          tag: "ManualAttendanceCheckIn",
+          selected_registration_id: data.registration_id,
+          selected_event_id: requestedEventId ?? null,
+          attendance_check_result: "not_registered",
+          error_code: "NOT_REGISTERED",
+        }),
+      );
+      return {
+        ok: false as const,
+        state: "invalid" as const,
+        code: "NOT_REGISTERED" as const,
+        error: "આ મોબાઇલ નંબરથી કોઈ નોંધણી મળી નથી.",
+      };
+    }
+
+    // Strict verification: registration.id and registration.event_id must match requested event_id
+    if (requestedEventId && reg.event_id !== requestedEventId) {
+      console.warn(
+        JSON.stringify({
+          tag: "ManualAttendanceCheckIn",
+          normalized_mobile: normalizeIndianMobile(reg.mobile) || reg.mobile,
+          selected_registration_id: data.registration_id,
+          selected_event_id: requestedEventId,
+          actual_event_id: reg.event_id,
+          attendance_check_result: "event_mismatch",
+          error_code: "EVENT_MISMATCH",
+        }),
+      );
+      return {
+        ok: false as const,
+        state: "invalid" as const,
+        code: "EVENT_MISMATCH" as const,
+        error: "કૃપા કરીને કાર્યક્રમ પસંદ કરો.",
+      };
     }
 
     const { data: eventRow } = await supabaseAdmin
@@ -1266,16 +1419,27 @@ export const operatorManualCheckIn = createServerFn({ method: "POST" })
     const eventDistrict = (eventRow?.district as string) || "";
     const cf = (reg.custom_fields ?? {}) as Record<string, unknown>;
     const participantArea =
+      (eventDistrict && eventDistrict.trim()) ||
       (reg.district && String(reg.district).trim()) ||
       (typeof cf.district === "string" && cf.district.trim()) ||
       (typeof cf.municipal_zone === "string" && cf.municipal_zone.trim()) ||
       (reg.taluka && String(reg.taluka).trim()) ||
-      eventDistrict;
+      "";
     const eventTitle =
       (eventGeneral.title as string) ||
       (eventDistrict ? `${eventDistrict} યોગ શિબિર` : "Gujarat State Yog Board Event");
 
     if (eventRow && isEventAttendanceClosed(eventRow as any)) {
+      console.info(
+        JSON.stringify({
+          tag: "ManualAttendanceCheckIn",
+          normalized_mobile: normalizeIndianMobile(reg.mobile) || reg.mobile,
+          selected_registration_id: reg.id,
+          selected_event_id: reg.event_id,
+          attendance_check_result: "closed",
+          error_code: "ATTENDANCE_CLOSED",
+        }),
+      );
       return {
         ok: false as const,
         state: "closed" as const,
@@ -1285,25 +1449,148 @@ export const operatorManualCheckIn = createServerFn({ method: "POST" })
         event_id: reg.event_id,
         event_title: eventTitle,
         district: participantArea,
-        error: "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે. (Attendance Closed / Event Completed)",
+        error: "આ યોગ શિબિરની હાજરી નોંધણીનો સમય પૂર્ણ થઈ ગયો છે.",
       };
     }
 
+    // Check existing attendance first by BOTH (event_id, registration_id) and (event_id, registration_number)
+    const { data: existingRows } = await supabaseAdmin
+      .from("attendance")
+      .select("id, registration_id, check_in_time")
+      .eq("event_id", reg.event_id)
+      .or(`registration_id.eq.${reg.id},registration_number.eq.${reg.registration_number}`)
+      .limit(1);
+
+    const existingAtt = existingRows?.[0];
+    if (existingAtt) {
+      if (!existingAtt.registration_id) {
+        await supabaseAdmin
+          .from("attendance")
+          .update({ registration_id: reg.id })
+          .eq("id", existingAtt.id);
+      }
+
+      const [totalAttendedRes, operatorScansRes] = await Promise.all([
+        supabaseAdmin
+          .from("attendance")
+          .select("id", { count: "exact", head: true })
+          .eq("event_id", reg.event_id)
+          .in("check_in_method", ["qr", "manual"]),
+        scannerId
+          ? supabaseAdmin
+              .from("attendance")
+              .select("id", { count: "exact", head: true })
+              .eq("scanner_id", scannerId)
+          : Promise.resolve({ count: 0 }),
+      ]);
+
+      console.info(
+        JSON.stringify({
+          tag: "ManualAttendanceCheckIn",
+          normalized_mobile: normalizeIndianMobile(reg.mobile) || reg.mobile,
+          selected_registration_id: reg.id,
+          selected_event_id: reg.event_id,
+          attendance_check_result: "duplicate",
+          error_code: "ALREADY_CHECKED_IN",
+        }),
+      );
+
+      return {
+        ok: true as const,
+        state: "duplicate" as const,
+        message: "આ સદસ્યની હાજરી પહેલેથી નોંધાઈ ગઈ છે.",
+        participant_name: reg.full_name,
+        participant_id: reg.registration_number,
+        event_id: reg.event_id,
+        event_title: eventTitle,
+        district: participantArea,
+        check_in_time: existingAtt.check_in_time as string,
+        present_count: totalAttendedRes.count ?? 0,
+        scan_count: operatorScansRes.count ?? 0,
+      };
+    }
+
+    // Verify scannerId exists in event_scanners before passing to RPC/insert to prevent FK violations
+    let validScannerId: string | null = null;
+    if (scannerId) {
+      const { data: scannerRow } = await supabaseAdmin
+        .from("event_scanners")
+        .select("id")
+        .eq("id", scannerId)
+        .maybeSingle();
+      if (scannerRow?.id) {
+        validScannerId = scannerRow.id;
+      }
+    }
+
     const meta = requestMeta();
+    const checkedInBy = adminUserId || operatorName || "operator";
+    let checkInResult: "success" | "duplicate" = "success";
+    let checkInTimeStr = new Date().toISOString();
+
     const rpcResult = await (supabaseAdmin.rpc as any)("record_event_checkin", {
       _event_id: reg.event_id,
       _registration_id: reg.id,
       _method: "manual",
-      _scanner_id: scannerId ?? null,
-      _checked_in_by: adminUserId || operatorName,
+      _scanner_id: validScannerId,
+      _checked_in_by: checkedInBy,
       _payload_hash: null,
       _ip: meta.ip,
       _user_agent: meta.userAgent,
     });
 
-    if (rpcResult.error || !rpcResult.data?.[0]) {
-      console.error("[operatorManualCheckIn] error:", rpcResult.error);
-      return { ok: false as const, error: "મેન્યુઅલ હાજરી નોંધવામાં નિષ્ફળતા મળી." };
+    if (!rpcResult.error && rpcResult.data?.[0]) {
+      checkInResult = rpcResult.data[0].result as "success" | "duplicate";
+      checkInTimeStr = (rpcResult.data[0].original_check_in as string) || checkInTimeStr;
+    } else {
+      // Fallback direct insert into public.attendance if RPC fails for any reason
+      console.warn("[operatorManualCheckIn] RPC fallback triggered:", rpcResult.error);
+      const nowIso = new Date().toISOString();
+      const { data: insertedAtt, error: insertErr } = await supabaseAdmin
+        .from("attendance")
+        .insert({
+          event_id: reg.event_id,
+          registration_id: reg.id,
+          registration_number: reg.registration_number,
+          full_name: reg.full_name,
+          mobile: normalizeIndianMobile(reg.mobile) || reg.mobile,
+          district_id: (reg as any).district_id ?? null,
+          scanner_id: validScannerId,
+          status: "checked_in",
+          check_in_method: "manual",
+          checked_in_by: checkedInBy,
+          check_in_time: nowIso,
+          user_agent: (meta.userAgent || "").slice(0, 500),
+          ip: meta.ip,
+        })
+        .select("id, check_in_time")
+        .maybeSingle();
+
+      if (insertErr) {
+        if ((insertErr as any).code === "23505") {
+          checkInResult = "duplicate";
+        } else {
+          console.error(
+            JSON.stringify({
+              tag: "ManualAttendanceCheckIn",
+              normalized_mobile: normalizeIndianMobile(reg.mobile) || reg.mobile,
+              selected_registration_id: reg.id,
+              selected_event_id: reg.event_id,
+              attendance_check_result: "error",
+              error_code: "DB_INSERT_ERROR",
+              db_error: insertErr.message,
+            }),
+          );
+          return {
+            ok: false as const,
+            state: "error" as const,
+            code: "DB_ERROR" as const,
+            error: "હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
+          };
+        }
+      } else if (insertedAtt?.check_in_time) {
+        checkInTimeStr = insertedAtt.check_in_time;
+      }
     }
 
     const [totalAttendedRes, operatorScansRes] = await Promise.all([
@@ -1312,23 +1599,38 @@ export const operatorManualCheckIn = createServerFn({ method: "POST" })
         .select("id", { count: "exact", head: true })
         .eq("event_id", reg.event_id)
         .in("check_in_method", ["qr", "manual"]),
-      scannerId
+      validScannerId
         ? supabaseAdmin
             .from("attendance")
             .select("id", { count: "exact", head: true })
-            .eq("scanner_id", scannerId)
+            .eq("scanner_id", validScannerId)
         : Promise.resolve({ count: 0 }),
     ]);
 
+    console.info(
+      JSON.stringify({
+        tag: "ManualAttendanceCheckIn",
+        normalized_mobile: normalizeIndianMobile(reg.mobile) || reg.mobile,
+        selected_registration_id: reg.id,
+        selected_event_id: reg.event_id,
+        attendance_check_result: checkInResult,
+        error_code: null,
+      }),
+    );
+
     return {
       ok: true as const,
-      state: rpcResult.data[0].result as "success" | "duplicate",
+      state: checkInResult,
+      message:
+        checkInResult === "duplicate"
+          ? "આ સદસ્યની હાજરી પહેલેથી નોંધાઈ ગઈ છે."
+          : "હાજરી સફળતાપૂર્વક નોંધાઈ ગઈ છે.",
       participant_name: reg.full_name,
       participant_id: reg.registration_number,
       event_id: reg.event_id,
       event_title: eventTitle,
       district: participantArea,
-      check_in_time: rpcResult.data[0].original_check_in as string,
+      check_in_time: checkInTimeStr,
       present_count: totalAttendedRes.count ?? 0,
       scan_count: operatorScansRes.count ?? 0,
     };

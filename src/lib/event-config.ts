@@ -997,9 +997,63 @@ export function isEventCompleted(
 }
 
 /**
+ * Shared Indian Mobile Normalization used across both Frontend and Backend.
+ * Normalizes any of the following formats to a clean 10-digit Indian mobile number:
+ * - 9913371400
+ * - +91 9913371400
+ * - 919913371400
+ * - 09913371400
+ * - +91 99133-71400
+ * - (099133) 71400
+ * - Gujarati (૦-૯) and Devanagari (०-९) digits, and WhatsApp/iOS directional formatting marks.
+ */
+export function normalizeIndianMobile(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // Convert Gujarati (U+0AE6..U+0AEF) and Devanagari (U+0966..U+096F) digits to ASCII 0-9
+  const ascii = String(raw)
+    .replace(/[\u0AE6-\u0AEF]/g, (ch) => String(ch.charCodeAt(0) - 0x0ae6))
+    .replace(/[\u0966-\u096F]/g, (ch) => String(ch.charCodeAt(0) - 0x0966));
+
+  const digits = ascii.replace(/[\s\-().+]/g, "").replace(/\D/g, "");
+  let clean = digits;
+  if (clean.length === 12 && clean.startsWith("91")) {
+    clean = clean.slice(2);
+  } else if (clean.length === 11 && clean.startsWith("0")) {
+    clean = clean.slice(1);
+  } else if (clean.length > 10) {
+    clean = clean.slice(-10);
+  }
+  if (/^[6-9]\d{9}$/.test(clean)) {
+    return clean;
+  }
+  return null;
+}
+
+/**
+ * Generates all indexed candidate strings for fast B-tree `.in("mobile", candidates)` lookup.
+ */
+export function buildMobileLookupCandidates(norm10: string): string[] {
+  return [
+    norm10,
+    `+91${norm10}`,
+    `91${norm10}`,
+    `0${norm10}`,
+    `+91 ${norm10}`,
+    `+91-${norm10}`,
+    `${norm10.slice(0, 5)} ${norm10.slice(5)}`,
+    `+91 ${norm10.slice(0, 5)} ${norm10.slice(5)}`,
+  ];
+}
+
+/**
  * Returns true if attendance check-in is closed for the given event.
- * Attendance closes automatically once the event is completed (at/after its scheduled end time in Asia/Kolkata),
- * or if the event is cancelled/archived.
+ * Attendance closes automatically:
+ * 1. If lifecycle_status is 'completed', 'cancelled', or 'archived' (or status.value === 'completed').
+ * 2. For Rajkot (2026-09-27), strictly at 8:00 PM IST (20:00).
+ * 3. For events with an explicit evening end_time (>= 18:00), at that configured end_time.
+ * 4. For events with a morning session template end_time (e.g. 08:00 AM), attendance remains open
+ *    on the event day in Asia/Kolkata until 23:59:59+05:30 so operators can complete on-ground and
+ *    manual mobile check-ins throughout the event day, and closes automatically once the event date ends.
  */
 export function isEventAttendanceClosed(
   event: {
@@ -1013,10 +1067,41 @@ export function isEventAttendanceClosed(
   },
   nowMs: number = Date.now(),
 ): boolean {
-  if (event.lifecycle_status === "cancelled" || event.lifecycle_status === "archived") {
+  if (
+    event.lifecycle_status === "completed" ||
+    event.status?.value === "completed" ||
+    event.lifecycle_status === "cancelled" ||
+    event.lifecycle_status === "archived"
+  ) {
     return true;
   }
-  return isEventCompleted(event, nowMs);
+  if (isKhedaUndatedEvent(event)) {
+    return false;
+  }
+
+  const g = event.general ?? {};
+  const dateStr = (g.end_date || g.event_date || event.event_date || "").trim();
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return false;
+  }
+
+  const isRajkotEvent =
+    event.id === "8870384b-f3fa-412e-b257-825e470214c3" ||
+    (event.slug || "").trim().toLowerCase() === "rajkot-yog-shibir";
+  if (isRajkotEvent && dateStr === "2026-09-27") {
+    const rajkotCutoffMs = Date.parse("2026-09-27T20:00:00+05:30");
+    return !Number.isNaN(rajkotCutoffMs) && nowMs >= rajkotCutoffMs;
+  }
+
+  const scheduledEndMs = getEventEndTimestampMs(event);
+  const endOfDayMs = Date.parse(`${dateStr}T23:59:59+05:30`);
+  if (Number.isNaN(endOfDayMs)) {
+    return scheduledEndMs !== null ? nowMs >= scheduledEndMs : false;
+  }
+
+  // Ensure attendance stays open through the event day (or explicit evening end_time if later)
+  const cutoffMs = scheduledEndMs !== null ? Math.max(scheduledEndMs, endOfDayMs) : endOfDayMs;
+  return nowMs >= cutoffMs;
 }
 
 export type EventRegistrationStatus = {

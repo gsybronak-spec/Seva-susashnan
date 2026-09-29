@@ -178,14 +178,15 @@ export const performCheckin = createServerFn({ method: "POST" })
     // Locate the participant by registration_number across events
     const { data: reg } = await supabaseAdmin
       .from("registrations")
-      .select("registration_number, full_name, mobile, gender, district, taluka, custom_fields, organization, qr_token, event_id")
+      .select("id, registration_number, full_name, mobile, gender, district, taluka, custom_fields, organization, qr_token, event_id")
       .eq("registration_number", data.registration_number)
       .limit(1)
       .maybeSingle();
 
-    if (!reg) return { ok: false, error: "Participant not found." };
+    if (!reg) return { ok: false, error: "આ મોબાઇલ નંબરથી કોઈ નોંધણી મળી નથી." };
 
     const regData = reg as unknown as {
+      id: string;
       registration_number: string;
       full_name: string;
       mobile: string;
@@ -208,7 +209,7 @@ export const performCheckin = createServerFn({ method: "POST" })
     if (eventRow && isEventAttendanceClosed(eventRow as any)) {
       return {
         ok: false,
-        error: "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે. (Attendance Closed / Event Completed)",
+        error: "આ યોગ શિબિરની હાજરી નોંધણીનો સમય પૂર્ણ થઈ ગયો છે.",
       };
     }
 
@@ -243,6 +244,7 @@ export const performCheckin = createServerFn({ method: "POST" })
       .from("attendance")
       .insert({
         event_id: eventId,
+        registration_id: regData.id,
         registration_number: participant.registration_number,
         full_name: participant.full_name,
         mobile: participant.mobile,

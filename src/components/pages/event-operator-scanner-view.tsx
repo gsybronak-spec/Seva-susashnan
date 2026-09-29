@@ -32,10 +32,12 @@ import {
   operatorSignIn,
   operatorSignOut,
 } from "@/lib/event-engine.functions";
+import { normalizeIndianMobile } from "@/lib/event-config";
 
 type ScanResult = {
   state: "success" | "duplicate" | "closed" | "invalid" | "unauthorized" | "error";
-  code?: "PLAIN_REGISTRATION_NUMBER" | "CROSS_EVENT" | "INVALID_QR" | "NOT_FOUND" | "ATTENDANCE_CLOSED";
+  code?: string;
+  message?: string;
   participant_name?: string;
   participant_id?: string;
   event_id?: string;
@@ -55,24 +57,30 @@ type ManualParticipantRow = {
   district: string;
   event_id: string;
   event_title: string;
+  event_date?: string;
   is_attended: boolean;
   check_in_time?: string | null;
   attendance_closed?: boolean;
 };
 
-function normalizeMobileClient(raw: string): string {
-  const trimmed = raw.trim();
-  const digitsOnly = trimmed.replace(/[\s\-().+]/g, "");
-  if (/^\d+$/.test(digitsOnly)) {
-    if (digitsOnly.length === 12 && digitsOnly.startsWith("91")) {
-      return digitsOnly.slice(2);
-    }
-    if (digitsOnly.length === 11 && digitsOnly.startsWith("0")) {
-      return digitsOnly.slice(1);
-    }
-    return digitsOnly;
+function formatEventDateDisplay(dateStr?: string | null): string {
+  if (!dateStr) return "";
+  const trimmed = dateStr.trim();
+  const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    return `${m[3]}/${m[2]}/${m[1]}`;
   }
   return trimmed;
+}
+
+function normalizeMobileClient(raw: string): string | null {
+  const norm10 = normalizeIndianMobile(raw);
+  if (norm10) return norm10;
+  const trimmed = raw.trim();
+  if (/^[A-Za-z]{2,6}[-_]?\d{3,10}$/.test(trimmed)) {
+    return trimmed.replace(/[-_\s]/g, "").toUpperCase();
+  }
+  return null;
 }
 
 // Web Audio API feedback
@@ -170,6 +178,8 @@ export function EventOperatorScannerView({
   // Manual mobile search state
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ManualParticipantRow[]>([]);
+  const [selectedRegId, setSelectedRegId] = useState<string | null>(null);
+  const [eventSelectionWarning, setEventSelectionWarning] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
@@ -551,12 +561,25 @@ export function EventOperatorScannerView({
   // Handle manual mobile number search (Universal across all events, never requires targetEventId)
   async function handleManualSearch(e: React.FormEvent) {
     e.preventDefault();
-    const normalized = normalizeMobileClient(searchQuery);
-    if (!normalized || normalized.length < 2) return;
+    const rawInput = searchQuery.trim();
+    if (!rawInput) return;
+
+    // Reset all previous search/selection/result state before searching
+    setSearchResults([]);
+    setSelectedRegId(null);
+    setEventSelectionWarning(null);
+    setSearchError(null);
+    setResult(null);
+    setHasSearched(true);
+
+    const normalized = normalizeMobileClient(rawInput);
+    if (!normalized) {
+      setSearchError("આ મોબાઇલ નંબરથી કોઈ નોંધણી મળી નથી.");
+      if (soundEnabled) playSound("error");
+      return;
+    }
 
     setSearching(true);
-    setSearchError(null);
-    setHasSearched(true);
 
     try {
       const res = await searchParticipantsFn({
@@ -565,28 +588,49 @@ export function EventOperatorScannerView({
         },
       });
       if (res.ok) {
-        setSearchResults((res.rows as ManualParticipantRow[]) || []);
+        const rows = (res.rows as ManualParticipantRow[]) || [];
+        setSearchResults(rows);
+        if (rows.length === 1) {
+          // Single registration: automatically select it for immediate Check In
+          setSelectedRegId(rows[0].id);
+        } else if (rows.length > 1) {
+          // Multiple registrations across events: NEVER auto-select; require explicit event selection
+          setSelectedRegId(null);
+        } else {
+          setSelectedRegId(null);
+          setSearchError("આ મોબાઇલ નંબરથી કોઈ નોંધણી મળી નથી.");
+        }
       } else {
         setSearchResults([]);
-        setSearchError(res.error || "શોધવામાં ક્ષતિ આવી.");
+        setSelectedRegId(null);
+        setSearchError(res.error || "હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.");
       }
-    } catch (err) {
+    } catch {
       setSearchResults([]);
-      setSearchError(err instanceof Error ? err.message : "શોધવામાં ક્ષતિ આવી.");
+      setSelectedRegId(null);
+      setSearchError("હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.");
     } finally {
       setSearching(false);
     }
   }
 
-  // Handle manual check-in button click (One round-trip to existing server-side attendance RPC)
-  async function handleManualMark(row: ManualParticipantRow) {
+  // Handle manual check-in button click (Sends both registration_id and event_id to server)
+  async function handleManualMark(row?: ManualParticipantRow | null) {
     if (markingId) return;
+    if (!row) {
+      setEventSelectionWarning("કૃપા કરીને કાર્યક્રમ પસંદ કરો.");
+      if (soundEnabled) playSound("error");
+      return;
+    }
+
+    setEventSelectionWarning(null);
     setMarkingId(row.id);
 
     try {
       const res = await manualCheckInFn({
         data: {
           registration_id: row.id,
+          event_id: row.event_id,
         },
       });
 
@@ -594,6 +638,11 @@ export function EventOperatorScannerView({
         const nextState = res.state === "duplicate" ? "duplicate" : "success";
         setResult({
           state: nextState,
+          message:
+            (res as any).message ||
+            (nextState === "duplicate"
+              ? "આ સદસ્યની હાજરી પહેલેથી નોંધાઈ ગઈ છે."
+              : "હાજરી સફળતાપૂર્વક નોંધાઈ ગઈ છે."),
           participant_name: res.participant_name || row.full_name,
           participant_id: res.participant_id || row.registration_number,
           event_id: res.event_id || row.event_id,
@@ -629,21 +678,27 @@ export function EventOperatorScannerView({
           playSound(nextState);
         }
       } else {
+        const nextState =
+          (res as any).state === "closed"
+            ? "closed"
+            : (res as any).state === "invalid"
+            ? "invalid"
+            : "error";
         setResult({
-          state: (res as any).state === "closed" ? "closed" : "error",
+          state: nextState,
           code: (res as any).code,
           participant_name: (res as any).participant_name || row.full_name,
           participant_id: (res as any).participant_id || row.registration_number,
           event_title: (res as any).event_title || row.event_title,
           district: (res as any).district || row.district,
-          error: res.error,
+          error: res.error || "હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
         });
         if (soundEnabled) playSound("error");
       }
-    } catch (err) {
+    } catch {
       setResult({
         state: "error",
-        error: err instanceof Error ? err.message : "મેન્યુઅલ હાજરી નોંધવામાં ક્ષતિ આવી.",
+        error: "હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો.",
       });
       if (soundEnabled) playSound("error");
     } finally {
@@ -861,7 +916,7 @@ export function EventOperatorScannerView({
                   </div>
                   <div className="flex-1 min-w-0">
                     <span className="text-xs font-extrabold uppercase tracking-wider text-amber-400 block">
-                      ⚠️ હાજરી પહેલેથી નોંધાઈ છે
+                      ⚠️ {result.message || "આ સદસ્યની હાજરી પહેલેથી નોંધાઈ ગઈ છે."}
                     </span>
                     <h3 className="text-base font-extrabold text-white truncate mt-0.5">
                       {result.participant_name}
@@ -907,7 +962,7 @@ export function EventOperatorScannerView({
                   </div>
                   <div className="flex-1 min-w-0">
                     <span className="text-xs font-extrabold uppercase tracking-wider text-rose-400 block">
-                      🔒 હાજરી બંધ / શિબિર પૂર્ણ (Attendance Closed)
+                      🔒 હાજરી બંધ / શિબિર પૂર્ણ
                     </span>
                     {result.participant_name && (
                       <h3 className="text-base font-extrabold text-white truncate mt-0.5">
@@ -920,7 +975,7 @@ export function EventOperatorScannerView({
                       </p>
                     )}
                     <p className="text-xs font-medium text-rose-100 leading-relaxed mt-1">
-                      {result.error || "આ શિબિર પૂર્ણ થઈ ગઈ છે. હાજરીનો સમય પૂર્ણ થયો છે."}
+                      {result.error || "આ યોગ શિબિરની હાજરી નોંધણીનો સમય પૂર્ણ થઈ ગયો છે."}
                     </p>
                   </div>
                 </div>
@@ -935,10 +990,16 @@ export function EventOperatorScannerView({
                   </div>
                   <div className="flex-1 min-w-0">
                     <span className="text-xs font-extrabold uppercase tracking-wider text-rose-400 block">
-                      {result.code === "PLAIN_REGISTRATION_NUMBER" ? "સાદો નંબર સ્કેન અમાન્ય" : "અમાન્ય QR કોડ"}
+                      {result.code === "PLAIN_REGISTRATION_NUMBER"
+                        ? "સાદો નંબર સ્કેન અમાન્ય"
+                        : result.code === "NOT_REGISTERED"
+                        ? "નોંધણી મળી નથી"
+                        : result.code === "DB_ERROR"
+                        ? "સર્વર સમસ્યા"
+                        : "હાજરી સૂચના"}
                     </span>
                     <p className="text-xs font-medium text-rose-100 leading-relaxed mt-1">
-                      {result.error || "અમાન્ય અથવા મેળ ન ખાતો QR કોડ."}
+                      {result.error || "હાજરી નોંધવામાં સમસ્યા આવી. કૃપા કરીને ફરી પ્રયાસ કરો."}
                     </p>
                   </div>
                 </div>
@@ -1083,7 +1144,15 @@ export function EventOperatorScannerView({
               inputMode="tel"
               placeholder="મોબાઈલ નંબર લખો (દા.ત. 9876543210)"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setSearchResults([]);
+                setSelectedRegId(null);
+                setEventSelectionWarning(null);
+                setSearchError(null);
+                setHasSearched(false);
+                setResult(null);
+              }}
               data-testid="manual-mobile-input"
               className="h-11 text-sm bg-slate-950 border-slate-700 text-white placeholder:text-slate-500 focus:border-emerald-400 rounded-xl flex-1 font-mono"
             />
@@ -1108,55 +1177,148 @@ export function EventOperatorScannerView({
           </form>
 
           {searchError && (
-            <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-700/60 text-rose-200 text-xs">
+            <div
+              className="p-3 rounded-xl bg-rose-950/80 border border-rose-700/60 text-rose-200 text-xs font-semibold"
+              data-testid="manual-search-error"
+            >
               {searchError}
             </div>
           )}
 
-          {/* Multiple registrations notice */}
+          {/* STEP 4: MULTIPLE REGISTRATIONS EVENT SELECTION (NO AUTO-SELECTION) */}
           {searchResults.length > 1 && (
-            <p className="text-[11px] font-semibold text-amber-300 px-1">
-              આ મોબાઈલ નંબર પર {searchResults.length} રજીસ્ટ્રેશન મળ્યા છે — શિબિર પસંદ કરી Check In કરો:
-            </p>
+            <div
+              className="p-3 rounded-xl bg-slate-950 border border-amber-500/40 space-y-2.5"
+              data-testid="manual-multiple-event-selector"
+            >
+              <p className="text-xs font-extrabold text-amber-300 leading-relaxed">
+                આ મોબાઇલ નંબર સાથે એકથી વધુ નોંધણી મળી છે. કયા કાર્યક્રમમાં હાજરી નોંધાવવી છે?
+              </p>
+
+              <div className="space-y-2 max-h-[260px] overflow-y-auto pr-0.5">
+                {searchResults.map((r) => {
+                  const isSelected = selectedRegId === r.id;
+                  const formattedDate = formatEventDateDisplay(r.event_date);
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedRegId(r.id);
+                        setEventSelectionWarning(null);
+                      }}
+                      data-testid={`manual-event-option-${r.event_id}`}
+                      className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 ${
+                        isSelected
+                          ? "bg-emerald-950/70 border-emerald-400 text-white shadow-sm"
+                          : "bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-200"
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <p className="text-xs sm:text-sm font-extrabold text-white truncate">
+                          {r.event_title}
+                        </p>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-300 flex-wrap">
+                          {r.district && (
+                            <span className="font-semibold text-emerald-300">
+                              📍 {r.district}
+                            </span>
+                          )}
+                          {formattedDate && (
+                            <span className="text-slate-400 font-mono">
+                              📅 {formattedDate}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                          isSelected
+                            ? "border-emerald-400 bg-emerald-500 text-black"
+                            : "border-slate-600"
+                        }`}
+                      >
+                        {isSelected && <div className="w-2 h-2 rounded-full bg-black" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {eventSelectionWarning && (
+                <p
+                  className="text-xs font-bold text-rose-400 px-1"
+                  data-testid="manual-select-event-warning"
+                >
+                  {eventSelectionWarning}
+                </p>
+              )}
+
+              {!selectedRegId && (
+                <Button
+                  type="button"
+                  onClick={() => void handleManualMark(null)}
+                  data-testid="manual-unselected-checkin-button"
+                  className="w-full h-10 bg-slate-800 hover:bg-slate-700 text-slate-200 font-extrabold text-xs rounded-xl gap-1.5"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Check In</span>
+                </Button>
+              )}
+            </div>
           )}
 
-          {/* Matching Registration(s) List */}
-          {searchResults.length > 0 && (
-            <div className="space-y-2 max-h-[340px] overflow-y-auto pr-0.5">
-              {searchResults.map((r) => (
-                <div
-                  key={r.id}
-                  data-testid={`manual-result-${r.registration_number}`}
-                  className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2.5"
-                >
-                  <div className="min-w-0 flex-1 space-y-0.5">
+          {/* STEP 3 & STEP 5: SELECTED PARTICIPANT CARD & CHECK-IN */}
+          {(() => {
+            const selectedRow =
+              searchResults.length === 1
+                ? searchResults[0]
+                : searchResults.find((r) => r.id === selectedRegId) || null;
+            if (!selectedRow) return null;
+
+            const formattedDate = formatEventDateDisplay(selectedRow.event_date);
+
+            return (
+              <div
+                key={selectedRow.id}
+                data-testid={`manual-result-${selectedRow.registration_number}`}
+                className="p-3.5 rounded-xl bg-slate-950 border border-emerald-500/40 space-y-2.5"
+              >
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <h3 className="text-xs sm:text-sm font-extrabold text-white truncate">
-                        {r.full_name}
+                      <h3 className="text-sm font-extrabold text-white truncate">
+                        {selectedRow.full_name}
                       </h3>
-                      {r.is_attended && (
-                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
-                          હાજરી પહેલેથી નોંધાઈ છે
+                      {selectedRow.is_attended && (
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
+                          આ સદસ્યની હાજરી પહેલેથી નોંધાઈ ગઈ છે.
                         </span>
                       )}
-                      {r.attendance_closed && (
-                        <span className="px-1.5 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[10px] font-bold">
-                          હાજરી બંધ (પૂર્ણ)
+                      {selectedRow.attendance_closed && (
+                        <span className="px-2 py-0.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[10px] font-bold">
+                          આ યોગ શિબિરની હાજરી નોંધણીનો સમય પૂર્ણ થઈ ગયો છે.
                         </span>
                       )}
                     </div>
 
                     <p className="text-xs font-bold text-emerald-400 truncate">
-                      {r.event_title}
+                      {selectedRow.event_title}
                     </p>
 
                     <div className="flex items-center gap-2 text-[11px] text-slate-300 flex-wrap">
                       <span className="font-mono font-bold text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
-                        {r.registration_number}
+                        {selectedRow.registration_number}
                       </span>
-                      {r.district && (
-                        <span className="text-slate-400 truncate">
-                          📍 {r.district}
+                      {selectedRow.district && (
+                        <span className="text-slate-300 truncate">
+                          📍 {selectedRow.district}
+                        </span>
+                      )}
+                      {formattedDate && (
+                        <span className="text-slate-400 font-mono">
+                          📅 {formattedDate}
                         </span>
                       )}
                     </div>
@@ -1165,37 +1327,37 @@ export function EventOperatorScannerView({
                   <Button
                     type="button"
                     size="sm"
-                    disabled={markingId === r.id || r.attendance_closed}
-                    onClick={() => void handleManualMark(r)}
-                    data-testid={`manual-checkin-${r.registration_number}`}
-                    className={`h-10 px-3.5 rounded-xl text-xs font-extrabold gap-1.5 shrink-0 ${
-                      r.attendance_closed
-                        ? "bg-slate-800 text-slate-400 cursor-not-allowed"
-                        : r.is_attended
+                    disabled={markingId === selectedRow.id}
+                    onClick={() => void handleManualMark(selectedRow)}
+                    data-testid={`manual-checkin-${selectedRow.registration_number}`}
+                    className={`h-10 px-4 rounded-xl text-xs font-extrabold gap-1.5 shrink-0 ${
+                      selectedRow.attendance_closed
+                        ? "bg-rose-900/80 hover:bg-rose-800 text-rose-100"
+                        : selectedRow.is_attended
                         ? "bg-amber-600 hover:bg-amber-500 text-white"
                         : "bg-emerald-600 hover:bg-emerald-500 text-white"
                     }`}
                   >
-                    {markingId === r.id ? (
+                    {markingId === selectedRow.id ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : r.attendance_closed ? (
+                    ) : selectedRow.attendance_closed ? (
                       <Clock className="w-3.5 h-3.5" />
                     ) : (
                       <UserCheck className="w-3.5 h-3.5" />
                     )}
-                    <span>{r.attendance_closed ? "હાજરી બંધ" : "Check In"}</span>
+                    <span>{selectedRow.attendance_closed ? "હાજરી બંધ" : "Check In"}</span>
                   </Button>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {hasSearched && !searching && searchResults.length === 0 && !searchError && (
             <div
               className="p-4 text-center rounded-xl bg-slate-950 border border-slate-800 text-slate-400 text-xs"
               data-testid="manual-no-results"
             >
-              આ મોબાઈલ નંબર સાથે કોઈ રજીસ્ટ્રેશન મળ્યું નથી.
+              આ મોબાઇલ નંબરથી કોઈ નોંધણી મળી નથી.
             </div>
           )}
         </section>
