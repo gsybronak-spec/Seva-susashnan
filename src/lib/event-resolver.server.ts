@@ -72,6 +72,7 @@ const PUBLIC_EVENT_COLUMNS = [
   "demo_mode",
   "form",
   "partner_form",
+  "campaign_id",
   "created_at",
   "updated_at",
 ].join(", ");
