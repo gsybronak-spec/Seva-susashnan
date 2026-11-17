@@ -753,7 +753,7 @@ export function RegisterView({
               <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2.5 animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
-                  Referred by <strong>{referralInfo.referrerName || effectiveRef.toUpperCase()}</strong> ({effectiveRef.toUpperCase()})
+                  આમંત્રક (Referrer): <strong>{referralInfo.referrerName || effectiveRef.toUpperCase()}</strong> ({effectiveRef.toUpperCase()})
                 </span>
               </div>
             )}
@@ -761,7 +761,7 @@ export function RegisterView({
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2.5 animate-in fade-in">
                 <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>
-                  {referralInfo.message || "Invalid referral code. You can still register normally below."}
+                  અમાન્ય રેફરલ કોડ ({effectiveRef.toUpperCase()}) — તમે નીચે સામાન્ય રીતે નોંધણી કરી શકો છો. / Invalid referral code. You can still register normally below.
                 </span>
               </div>
             )}
