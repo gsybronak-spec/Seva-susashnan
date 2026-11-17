@@ -130,9 +130,15 @@ export const registerParticipant = createServerFn({ method: "POST" })
       district_id,
     );
 
-    if (coverage.type !== "single") {
+    const isStateCoverage =
+      coverage.type === "state" ||
+      (resolved.event as any)?.type === "state" ||
+      (resolved.event as any)?.general?.level?.toLowerCase() === "state" ||
+      Boolean((resolved.event as any)?.campaign_id);
+
+    if (coverage.type !== "single" || isStateCoverage) {
       let allowed: string[] | null = coverage.district_ids;
-      if (coverage.type === "state") {
+      if (coverage.type === "state" || isStateCoverage) {
         const { data: allDistricts } = await supabaseAdmin
           .from("districts")
           .select("id")
@@ -316,10 +322,8 @@ export const registerParticipant = createServerFn({ method: "POST" })
 
     // Preserve user-selected district/area if present, otherwise default to districtName
     const cf = { ...(data.custom_fields ?? {}) };
-    if (isDistrictEvent && districtName) {
-      if (!cf.district || typeof cf.district !== "string" || !cf.district.trim()) {
-        cf.district = districtName;
-      }
+    if (districtName && (!cf.district || typeof cf.district !== "string" || !cf.district.trim() || cf.district === district_id || cf.district === data.district_id)) {
+      cf.district = districtName;
     }
     const isVadodara =
       resolved.event?.slug === "vadodara-yog-shibir" ||

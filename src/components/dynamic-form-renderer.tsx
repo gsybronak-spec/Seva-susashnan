@@ -148,7 +148,7 @@ function renderFieldControl({
 
   const isUppercase = field.key === "full_name" || field.key === "referral_code" || field.key === "ref";
 
-  if (field.key === "district" && field.readonly) {
+  if (field.key === "district" && field.readonly && field.type !== "dropdown") {
     const displayVal = value ?? field.default_value ?? "";
     return (
       <div className="relative flex items-center">
@@ -288,7 +288,7 @@ function renderFieldControl({
       return (
         <Select
           disabled={disabled}
-          value={current}
+          value={current || undefined}
           onValueChange={(val) => onChange(val)}
         >
           <SelectTrigger

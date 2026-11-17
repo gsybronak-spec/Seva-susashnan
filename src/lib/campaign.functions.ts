@@ -215,6 +215,7 @@ export const adminCreateCampaign = createServerFn({ method: "POST" })
       await supabaseAdmin.from("events").insert({
         campaign_id: row.id,
         slug: data.slug,
+        type: "state",
         district: data.venue || "Gujarat",
         district_name: data.venue || "Gujarat",
         publish_status: publishStatus,
@@ -229,6 +230,8 @@ export const adminCreateCampaign = createServerFn({ method: "POST" })
           banner_url: data.banner_url || "",
           registration_enabled: regStatus === "open",
           registration_mode: "online",
+          level: "State",
+          coverage: { type: "state" },
         },
         features: {
           registration: regStatus === "open",
@@ -276,7 +279,7 @@ export const adminCreateCampaign = createServerFn({ method: "POST" })
             },
             {
               key: "district",
-              type: "text",
+              type: "dropdown",
               label: "District / જિલ્લો",
               order: 3,
               hidden: false,
@@ -287,8 +290,8 @@ export const adminCreateCampaign = createServerFn({ method: "POST" })
               readonly: false,
               required: true,
               validation: {},
-              placeholder: "ENTER YOUR DISTRICT",
-              help: "Enter your district name.",
+              placeholder: "Select District / જિલ્લો પસંદ કરો",
+              help: "Select your district / તમારો જિલ્લો પસંદ કરો.",
               default_value: "",
             },
           ],

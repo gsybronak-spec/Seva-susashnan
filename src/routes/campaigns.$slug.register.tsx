@@ -14,7 +14,7 @@ function sanitizeEventForPublic<T extends Record<string, unknown> | null | undef
   const allowed = [
     "id", "slug", "is_active", "is_template", "template_category",
     "lifecycle_status", "publish_status", "archived_at", "type",
-    "description", "district", "district_id", "district_name",
+    "description", "district", "district_id", "district_name", "campaign_id",
     "event_date", "event_time", "venue", "registration_open_at",
     "registration_close_at", "max_registrations", "reg_prefix",
     "general", "features", "live", "attendance", "certificate",

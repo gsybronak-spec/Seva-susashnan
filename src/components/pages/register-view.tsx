@@ -29,6 +29,43 @@ export type RegisterViewProps = {
   initialData?: EventConfigInitialData | null;
 };
 
+export const GUJARAT_DISTRICTS = [
+  { id: "b5560737-a3de-4683-b009-9779affe46fc", name: "Ahmedabad", slug: "ahmedabad" },
+  { id: "e089b20d-0530-4ac6-a614-d41fd1216c68", name: "Amreli", slug: "amreli" },
+  { id: "102bc9d8-a9f0-4476-afb7-be2770918a06", name: "Anand", slug: "anand" },
+  { id: "cd1f979b-d035-40c3-87dd-46be3651818a", name: "Aravalli", slug: "aravalli" },
+  { id: "a18e5ca7-d447-4e14-acea-58b4719cab5c", name: "Banaskantha", slug: "banaskantha" },
+  { id: "96d2f78c-c329-4fcb-8d62-82f95897e7ea", name: "Bharuch", slug: "bharuch" },
+  { id: "1632d2f3-5e4c-4f90-8dc6-a4581e990920", name: "Bhavnagar", slug: "bhavnagar" },
+  { id: "93448ad6-af85-4976-b119-7100c2376c73", name: "Botad", slug: "botad" },
+  { id: "5e67fcb0-f7ef-41da-bee4-921483c1cc87", name: "Chhota Udepur", slug: "chhota-udepur" },
+  { id: "148a023f-6791-4d77-a3d2-f71555b7b737", name: "Dahod", slug: "dahod" },
+  { id: "66055f29-1e68-46fd-a253-282af131dfd0", name: "Dang", slug: "dang" },
+  { id: "76967c60-2047-48a5-80e8-b2fff885eb52", name: "Devbhumi Dwarka", slug: "devbhumi-dwarka" },
+  { id: "402aba31-790d-4fa3-ab46-a253220bd4c3", name: "Gandhinagar", slug: "gandhinagar" },
+  { id: "632fcff0-84cc-4e49-8963-da325dc57ca6", name: "Gir Somnath", slug: "gir-somnath" },
+  { id: "07bd6d0e-a688-4df8-b66e-4e03652a4c04", name: "Jamnagar", slug: "jamnagar" },
+  { id: "f0b79ca1-499c-412c-b75a-f9de4aebd262", name: "Junagadh", slug: "junagadh" },
+  { id: "bbbd8dc3-a1bd-4b7e-b6bd-9b884d6a8a3a", name: "Kheda", slug: "kheda" },
+  { id: "47d05828-994c-47e5-b12f-f1c8605b9e8f", name: "Kutch", slug: "kutch" },
+  { id: "1a6dc02a-9a04-4012-a138-77ac3e4c504a", name: "Mahisagar", slug: "mahisagar" },
+  { id: "82941b91-3c1d-47aa-8168-b731ba361d4a", name: "Mehsana", slug: "mehsana" },
+  { id: "2661b83d-23d8-451a-8947-fb3a125b6721", name: "Morbi", slug: "morbi" },
+  { id: "a3cc9d64-fcef-40c1-a8aa-68e01ec65682", name: "Narmada", slug: "narmada" },
+  { id: "4e8478e1-cb1f-4eae-8568-e2dcb2fa2339", name: "Navsari", slug: "navsari" },
+  { id: "bf6beaab-6221-4e9e-ac83-bf3623186874", name: "Panchmahal", slug: "panchmahal" },
+  { id: "b555b42f-4dc1-4d35-9204-e86c2665eade", name: "Patan", slug: "patan" },
+  { id: "2b3811cc-70c5-4977-9370-77e83c35adc0", name: "Porbandar", slug: "porbandar" },
+  { id: "4e338837-80f3-4c05-ad8a-2e2b88cd6e0b", name: "Rajkot", slug: "rajkot" },
+  { id: "5e4bd7df-f3b0-49c6-a906-f0bd4d0e3371", name: "Sabarkantha", slug: "sabarkantha" },
+  { id: "aabd068f-8a6d-4f6e-be42-4ca62eaef8d9", name: "Surat", slug: "surat" },
+  { id: "0ea10d8b-3df0-474b-9bcc-fa6c161ba994", name: "Surendranagar", slug: "surendranagar" },
+  { id: "575a40a0-a0c6-4efe-a68f-9ba94140971b", name: "Tapi", slug: "tapi" },
+  { id: "0c76cff9-6f67-4aaa-ace9-8b6be868e6a0", name: "Vadodara", slug: "vadodara" },
+  { id: "af1fe19b-6ec1-48a2-881a-71f6e9f4a3c0", name: "Valsad", slug: "valsad" },
+  { id: "048ee7a9-d9dd-4e96-9bde-3cff6bf56a9a", name: "Vav-Tharad", slug: "vav-tharad" },
+];
+
 export function RegisterView({
   eventSlug,
   refCode,
@@ -57,6 +94,23 @@ export function RegisterView({
     ""
   ).trim();
 
+  const isStateWide =
+    !targetDistrict ||
+    ["gujarat", "all", "state", "gujarat state"].includes(targetDistrict.toLowerCase()) ||
+    eventLevel === "state" ||
+    Boolean((config as any).campaign_id) ||
+    Boolean(eventSlug?.includes("snehmilan"));
+
+  const isSingleDistrictLocked = !isStateWide && isDistrictEvent && targetDistrict.length > 0;
+
+  const availableDistricts = (coverageDistricts && coverageDistricts.length > 0)
+    ? coverageDistricts
+    : GUJARAT_DISTRICTS;
+  const districtDropdownOptions = availableDistricts.map((d) => ({
+    label: d.name,
+    value: d.id,
+  }));
+
   const [submitting, setSubmitting] = useState(false);
   const [partnerInfo, setPartnerInfo] = useState<{
     partner_id: string;
@@ -79,7 +133,7 @@ export function RegisterView({
     return {
       ref: ref ? ref.toUpperCase() : "",
       referral_code: ref ? ref.toUpperCase() : "",
-      ...(isDistrictEvent && targetDistrict && !hasDistrictOptions ? { district: targetDistrict } : {}),
+      ...(isSingleDistrictLocked && targetDistrict && !hasDistrictOptions ? { district: targetDistrict } : {}),
     };
   });
   const [formErrors, setFormErrors] = useState<Record<string, string | null>>({});
@@ -166,25 +220,11 @@ export function RegisterView({
           };
         }
         if (f.key === "district") {
-          const hasOptions = Array.isArray(f.options) && f.options.length > 0;
-          const isDropdown = f.type === "dropdown" || hasOptions;
-          if (isDropdown) {
-            return {
-              ...f,
-              type: "dropdown",
-              label: f.label || "District / Area",
-              placeholder: f.placeholder || "Select Area / District",
-              required: true,
-              readonly: false,
-              options: f.options,
-              help: f.help || "Select your area/district.",
-            };
-          }
-          if (isDistrictEvent && targetDistrict) {
+          if (isSingleDistrictLocked && targetDistrict) {
             return {
               ...f,
               type: "text",
-              label: f.label || "District / Area",
+              label: f.label || "District / જિલ્લો",
               placeholder: targetDistrict,
               required: true,
               readonly: true,
@@ -193,17 +233,29 @@ export function RegisterView({
               options: [],
             };
           }
+          const existingOptions =
+            Array.isArray(f.options) && f.options.length > 0 ? f.options : districtDropdownOptions;
+          return {
+            ...f,
+            type: "dropdown",
+            label: f.label || "District / જિલ્લો",
+            placeholder: f.placeholder || "Select District / જિલ્લો પસંદ કરો",
+            required: true,
+            readonly: false,
+            options: existingOptions,
+            help: f.help || "Select your district / તમારો જિલ્લો પસંદ કરો.",
+          };
         }
         return f;
       });
 
     // If district field isn't present, add it based on coverage/level
     if (!list.some((f) => f.key === "district")) {
-      if (isDistrictEvent && targetDistrict) {
+      if (isSingleDistrictLocked && targetDistrict) {
         list.push({
           key: "district",
           type: "text",
-          label: "District / Area",
+          label: "District / જિલ્લો",
           placeholder: targetDistrict,
           required: true,
           enabled: true,
@@ -221,27 +273,27 @@ export function RegisterView({
       } else {
         list.push({
           key: "district",
-          type: coverageDistricts && coverageDistricts.length > 0 ? "dropdown" : "text",
-          label: "District / Area",
-          placeholder: "Select District",
+          type: "dropdown",
+          label: "District / જિલ્લો",
+          placeholder: "Select District / જિલ્લો પસંદ કરો",
           required: true,
           enabled: true,
-          readonly: !(coverageDistricts && coverageDistricts.length > 0),
+          readonly: false,
           unique: false,
           hidden: false,
-          default_value: districtName || "",
-          options: (coverageDistricts ?? []).map((d) => ({ label: d.name, value: d.id })),
+          default_value: "",
+          options: districtDropdownOptions,
           validation: {},
           visible_if: [],
           builtin: true,
           order: 6,
-          help: "District where event is organized.",
+          help: "Select your district / તમારો જિલ્લો પસંદ કરો.",
         });
       }
     }
 
     return list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [config.form?.fields, coverageDistricts, districtName, partnerInfo, ref, isDistrictEvent, targetDistrict]);
+  }, [config.form?.fields, districtDropdownOptions, partnerInfo, ref, isSingleDistrictLocked, targetDistrict]);
 
   // Initialize default values
   useEffect(() => {
@@ -253,7 +305,7 @@ export function RegisterView({
             next[f.key] = f.default_value;
           }
         }
-        if (isDistrictEvent && targetDistrict) {
+        if (isSingleDistrictLocked && targetDistrict) {
           const districtField = fields.find((f) => f.key === "district");
           const hasDistrictOptions = Array.isArray(districtField?.options) && districtField.options.length > 0;
           if (!hasDistrictOptions && districtField?.type !== "dropdown" && !next.district) {
@@ -263,7 +315,7 @@ export function RegisterView({
         return next;
       });
     }
-  }, [fields, isDistrictEvent, targetDistrict]);
+  }, [fields, isSingleDistrictLocked, targetDistrict]);
 
   function handleFieldChange(key: string, value: any) {
     const districtField = fields.find((f) => f.key === "district");
@@ -386,25 +438,37 @@ export function RegisterView({
       }
     }
 
-    const districtField = fields.find((f) => f.key === "district");
-    const hasDistrictOptions = Array.isArray(districtField?.options) && districtField.options.length > 0;
-    const isDistrictDropdown = districtField?.type === "dropdown" || hasDistrictOptions;
-    const effectiveDistrict =
-      isDistrictDropdown && formValues.district
-        ? formValues.district
-        : isDistrictEvent && targetDistrict
-          ? targetDistrict
-          : formValues.district;
+    let selectedDistrictId: string | undefined = undefined;
+    let selectedDistrictName: string = "";
 
-    // 5-field mapping
-    if (effectiveDistrict) {
-      custom_fields.district = effectiveDistrict;
-      if (!isDistrictEvent) {
-        custom_fields.area_type = effectiveDistrict === "VADODARA RURAL" ? "gramya" : "municipal";
-        if (effectiveDistrict === "VADODARA RURAL") {
+    const rawDistrictVal = typeof formValues.district === "string" ? formValues.district.trim() : "";
+    if (rawDistrictVal) {
+      const matched = availableDistricts.find(
+        (d) => d.id === rawDistrictVal || d.name.toLowerCase() === rawDistrictVal.toLowerCase()
+      );
+      if (matched) {
+        selectedDistrictId = matched.id;
+        selectedDistrictName = matched.name;
+      } else {
+        selectedDistrictId = rawDistrictVal;
+        selectedDistrictName = rawDistrictVal;
+      }
+    } else if (isSingleDistrictLocked && targetDistrict) {
+      selectedDistrictName = targetDistrict;
+      const matched = availableDistricts.find(
+        (d) => d.name.toLowerCase() === targetDistrict.toLowerCase()
+      );
+      if (matched) selectedDistrictId = matched.id;
+    }
+
+    if (selectedDistrictName) {
+      custom_fields.district = selectedDistrictName;
+      if (!isDistrictEvent && selectedDistrictName.includes("VADODARA")) {
+        custom_fields.area_type = selectedDistrictName === "VADODARA RURAL" ? "gramya" : "municipal";
+        if (selectedDistrictName === "VADODARA RURAL") {
           custom_fields.rural_taluka = "VADODARA RURAL";
         } else {
-          custom_fields.municipal_zone = effectiveDistrict;
+          custom_fields.municipal_zone = selectedDistrictName;
         }
       }
     }
@@ -444,10 +508,7 @@ export function RegisterView({
           ref: refCodeVal,
           partner_slug: partnerInfo ? partnerInfo.slug : undefined,
           district_slug: eventSlug || undefined,
-          district_id:
-            coverageDistricts && coverageDistricts.length > 0 && typeof formValues.district === "string"
-              ? formValues.district
-              : undefined,
+          district_id: selectedDistrictId,
           custom_fields: Object.keys(custom_fields).length ? custom_fields : undefined,
         },
       });
