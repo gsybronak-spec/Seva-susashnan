@@ -21,6 +21,7 @@ import {
   AlertCircle,
   Award,
 } from "lucide-react";
+import { YOG_SNEH_MILAN_BRANDING, isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 export type RegisterViewProps = {
   eventSlug?: string;
@@ -94,12 +95,19 @@ export function RegisterView({
     ""
   ).trim();
 
+  const isSnehMilan = isYogSnehMilanCampaign({
+    campaignSlug: (config as any).campaign_slug,
+    campaignId: (config as any).campaign_id,
+    eventSlug,
+    eventTitle: config.general?.title,
+  });
+
   const isStateWide =
     !targetDistrict ||
     ["gujarat", "all", "state", "gujarat state"].includes(targetDistrict.toLowerCase()) ||
     eventLevel === "state" ||
     Boolean((config as any).campaign_id) ||
-    Boolean(eventSlug?.includes("snehmilan"));
+    isSnehMilan;
 
   const isSingleDistrictLocked = !isStateWide && isDistrictEvent && targetDistrict.length > 0;
 
@@ -551,7 +559,9 @@ export function RegisterView({
     }
   }
 
-  const eventTitle = config.general?.title || "ગુજરાત રાજ્ય યોગ બોર્ડ યોગ શિબિર";
+  const eventTitle = isSnehMilan
+    ? YOG_SNEH_MILAN_BRANDING.line3
+    : config.general?.title || "ગુજરાત રાજ્ય યોગ બોર્ડ યોગ શિબિર";
   const rawDate = config.general?.event_date || (config as any)?.event_date;
   const eventDate = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
     ? new Date(rawDate + (rawDate.length === 10 ? "T00:00:00" : "")).toLocaleDateString("en-IN", {
@@ -631,6 +641,11 @@ export function RegisterView({
 
             {/* Event Title */}
             <div>
+              {isSnehMilan && (
+                <p className="text-xs sm:text-sm font-bold text-[#F59E0B] tracking-wide mb-1">
+                  {YOG_SNEH_MILAN_BRANDING.line2}
+                </p>
+              )}
               <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-white leading-tight">
                 {eventTitle}
               </h1>

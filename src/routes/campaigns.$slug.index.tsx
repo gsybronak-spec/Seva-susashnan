@@ -3,8 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { CalendarDays, MapPin, Users, ArrowRight, Megaphone, BadgeCheck } from "lucide-react";
 import { BRAND } from "@/lib/brand";
+import { BrandEmblem } from "@/components/site-header";
 import { getCampaignBySlug, type CampaignTheme } from "@/lib/campaign.functions";
 import { LotusMark, petalBandStyle } from "@/components/art/gsyb-art";
+import { YOG_SNEH_MILAN_BRANDING, isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 export const Route = createFileRoute("/campaigns/$slug/")({
   head: () => ({
@@ -90,6 +92,12 @@ function CampaignPage() {
   const events = data.events as unknown as EventRow[];
   const t = campaign.theme ?? {};
 
+  const isSnehMilan = isYogSnehMilanCampaign({
+    campaignSlug: slug,
+    campaignName: campaign.name,
+    campaignId: campaign.id,
+  });
+
   // Campaign-scoped accents fall back to global brand tokens.
   const cp = t.primaryColor || "var(--brand-primary)";
   const cb = t.buttonColor || "var(--brand-primary)";
@@ -127,27 +135,56 @@ function CampaignPage() {
           style={{ background: "radial-gradient(110% 80% at 50% 110%, color-mix(in oklab, var(--brand-accent) 20%, transparent) 0%, transparent 60%)" }}
         />
         <div className="relative mx-auto max-w-5xl px-4 py-14 text-center sm:py-20">
-          {campaign.logo_url && (
-            <img
-              src={campaign.logo_url}
-              alt=""
-              className="mx-auto mb-5 h-20 w-20 rounded-full border border-border bg-white object-contain p-1 shadow-editorial"
-            />
-          )}
-          <div
-            className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border bg-card/70 px-3.5 py-1 text-xs font-semibold backdrop-blur"
-            style={{ color: cp, borderColor: "color-mix(in oklab, currentColor 25%, transparent)" }}
-          >
-            <Megaphone className="h-3.5 w-3.5" />
-            Campaign of the {BRAND.name}
-          </div>
-          <h1 className="display-1" style={{ color: cp }}>
-            {campaign.name}
-          </h1>
-          {campaign.slogan && (
-            <p className="gujarati-display mt-5 max-w-2xl mx-auto" style={{ color: ct, opacity: 0.85 }}>
-              “{campaign.slogan}”
-            </p>
+          {isSnehMilan ? (
+            <>
+              {/* Official GSYB Emblem at top */}
+              <div className="flex justify-center mb-4 sm:mb-6">
+                <BrandEmblem className="h-14 w-14 sm:h-16 sm:w-16 md:h-20 md:w-20 shrink-0 drop-shadow-xs" />
+              </div>
+
+              {/* Exact Yog Sneh Milan 3-Line Gujarati Typography Hierarchy */}
+              <div className="space-y-2 sm:space-y-3 font-gujarati">
+                {/* Line 1: Official Authority */}
+                <div className="text-base sm:text-lg md:text-xl font-semibold text-[#0F3E3E] tracking-normal leading-snug">
+                  {YOG_SNEH_MILAN_BRANDING.line1}
+                </div>
+
+                {/* Line 2: Slogan / Greeting */}
+                <div className="text-lg sm:text-2xl md:text-3xl font-bold text-[#EA580C] tracking-wide leading-snug">
+                  {YOG_SNEH_MILAN_BRANDING.line2}
+                </div>
+
+                {/* Line 3: Prominent Main Heading */}
+                <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold text-[#0F3E3E] tracking-tight leading-tight pt-1">
+                  {YOG_SNEH_MILAN_BRANDING.line3}
+                </h1>
+              </div>
+            </>
+          ) : (
+            <>
+              {campaign.logo_url && (
+                <img
+                  src={campaign.logo_url}
+                  alt=""
+                  className="mx-auto mb-5 h-20 w-20 rounded-full border border-border bg-white object-contain p-1 shadow-editorial"
+                />
+              )}
+              <div
+                className="mx-auto mb-4 inline-flex items-center gap-2 rounded-full border bg-card/70 px-3.5 py-1 text-xs font-semibold backdrop-blur"
+                style={{ color: cp, borderColor: "color-mix(in oklab, currentColor 25%, transparent)" }}
+              >
+                <Megaphone className="h-3.5 w-3.5" />
+                Campaign of the {BRAND.name}
+              </div>
+              <h1 className="display-1" style={{ color: cp }}>
+                {campaign.name}
+              </h1>
+              {campaign.slogan && (
+                <p className="gujarati-display mt-5 max-w-2xl mx-auto" style={{ color: ct, opacity: 0.85 }}>
+                  “{campaign.slogan}”
+                </p>
+              )}
+            </>
           )}
           <div className="mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
             {(campaign.start_date || campaign.end_date) && (

@@ -39,9 +39,9 @@ export const Route = createFileRoute("/$event/register")({
     return {
       meta: [
         { title },
-        { name: "description", content: "Register for the official Yog ane Dhyan Shibir event." },
+        { name: "description", content: "Official Event Registration — Gujarat State Yog Board." },
         { property: "og:title", content: title },
-        { property: "og:description", content: "Register for the official Yog ane Dhyan Shibir event." },
+        { property: "og:description", content: "Official Event Registration — Gujarat State Yog Board." },
       ],
     };
   },

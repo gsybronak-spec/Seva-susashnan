@@ -5,6 +5,7 @@ import { Download, Printer, Copy, Check, Loader2, Sparkles } from "lucide-react"
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { getEventIdCard, recordIdCardDownload } from "@/lib/event-engine.functions";
+import { YOG_SNEH_MILAN_BRANDING, isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 type CardData = Awaited<ReturnType<typeof getEventIdCard>>;
 
@@ -170,18 +171,33 @@ export function EventIdCard({
     );
 
     // 4. Event Title Section
-    ctx.fillStyle = "#D97706";
-    ctx.font = "bold 17px 'Noto Serif Gujarati', 'Noto Serif', serif";
-    const campaignHeading = card.campaign_name
-      ? `“${card.campaign_name}” અંતર્ગત`
-      : card.event_title?.toLowerCase().includes("sneh")
-        ? `“${card.event_title}” અંતર્ગત`
-        : "“સેવા સંકલ્પ અભિયાન” અંતર્ગત";
-    ctx.fillText(campaignHeading, 60, 126);
+    const isSnehMilanCard = isYogSnehMilanCampaign({
+      campaignName: card.campaign_name,
+      eventTitle: card.event_title,
+    });
 
-    ctx.fillStyle = "#0F3E3E";
-    ctx.font = "bold 34px 'Noto Serif Gujarati', 'Noto Serif', serif";
-    ctx.fillText(card.event_title || "યોગ અને ધ્યાન શિબિર", 60, 170);
+    if (isSnehMilanCard) {
+      // Line 2: નૂતનવર્ષ અભિનંદન
+      ctx.fillStyle = "#D97706";
+      ctx.font = "bold 18px 'Noto Serif Gujarati', 'Noto Serif', serif";
+      ctx.fillText(YOG_SNEH_MILAN_BRANDING.line2, 60, 126);
+
+      // Line 3: યોગ સ્નેહમિલન કાર્યક્રમ
+      ctx.fillStyle = "#0F3E3E";
+      ctx.font = "bold 34px 'Noto Serif Gujarati', 'Noto Serif', serif";
+      ctx.fillText(YOG_SNEH_MILAN_BRANDING.line3, 60, 170);
+    } else {
+      ctx.fillStyle = "#D97706";
+      ctx.font = "bold 17px 'Noto Serif Gujarati', 'Noto Serif', serif";
+      const campaignHeading = card.campaign_name
+        ? `“${card.campaign_name}” અંતર્ગત`
+        : "“સેવા સંકલ્પ અભિયાન” અંતર્ગત";
+      ctx.fillText(campaignHeading, 60, 126);
+
+      ctx.fillStyle = "#0F3E3E";
+      ctx.font = "bold 34px 'Noto Serif Gujarati', 'Noto Serif', serif";
+      ctx.fillText(card.event_title || "યોગ અને ધ્યાન શિબિર", 60, 170);
+    }
 
     // Divider line
     ctx.strokeStyle = "#E8E0D5";
@@ -554,9 +570,20 @@ export function EventIdCard({
               <p className="text-[11px] sm:text-xs text-[#4E7D66] font-medium mt-0.5">
                 ગુજરાત રાજ્ય યોગ બોર્ડ • રમતગમત, યુવા અને સાંસ્કૃતિક પ્રવૃત્તિઓ વિભાગ
               </p>
-              <p className="text-xs font-semibold text-[#D97706] mt-1">
-                {data.event_title}
-              </p>
+              {isYogSnehMilanCampaign({ campaignName: (data as any)?.campaign_name, eventTitle: data.event_title }) ? (
+                <>
+                  <p className="text-xs font-bold text-[#D97706] mt-1">
+                    {YOG_SNEH_MILAN_BRANDING.line2}
+                  </p>
+                  <p className="text-sm sm:text-base font-extrabold text-[#0F3E3E] mt-0.5">
+                    {YOG_SNEH_MILAN_BRANDING.line3}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs font-semibold text-[#D97706] mt-1">
+                  {data.event_title}
+                </p>
+              )}
             </div>
             <div className="inline-flex items-center gap-1.5 self-start sm:self-auto bg-[#FAF8F5] px-3 py-1 rounded-full border border-[#E8E0D5]">
               <Sparkles className="w-3.5 h-3.5 text-[#D97706]" />

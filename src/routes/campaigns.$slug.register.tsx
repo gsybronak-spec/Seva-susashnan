@@ -7,6 +7,7 @@ import { BRAND } from "@/lib/brand";
 import { RegisterView } from "@/components/pages/register-view";
 import { getCampaignBySlug, type CampaignTheme } from "@/lib/campaign.functions";
 import type { EventConfigInitialData } from "@/hooks/use-event-config";
+import { isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 function sanitizeEventForPublic<T extends Record<string, unknown> | null | undefined>(row: T): T {
   if (!row) return row;
@@ -153,14 +154,22 @@ function CampaignRegisterPage() {
     initialData: EventConfigInitialData;
   };
 
+  const isSnehMilan = isYogSnehMilanCampaign({
+    campaignSlug: payload.campaign.slug,
+    campaignName: payload.campaign.name,
+    eventSlug: payload.eventSlug,
+  });
+
   return (
     <div style={themeStyle((payload.initialData.config as { theme?: CampaignTheme } | null)?.theme)}>
-      <div className="border-b border-border bg-muted/30 px-4 py-3 text-center text-sm select-none">
-        <span className="text-muted-foreground">Campaign: </span>
-        <span className="font-semibold text-brand-primary">
-          {payload.campaign.name}
-        </span>
-      </div>
+      {!isSnehMilan && (
+        <div className="border-b border-border bg-muted/30 px-4 py-3 text-center text-sm select-none">
+          <span className="text-muted-foreground">Campaign: </span>
+          <span className="font-semibold text-brand-primary">
+            {payload.campaign.name}
+          </span>
+        </div>
+      )}
       <RegisterView
         eventSlug={payload.eventSlug}
         refCode={ref}

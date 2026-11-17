@@ -6,6 +6,7 @@ import { BrandEmblem } from "./site-header";
 import { getCampaignBySlug } from "@/lib/campaign.functions";
 import { useCurrentEvent } from "@/hooks/use-current-event";
 import { useEventConfig } from "@/hooks/use-event-config";
+import { YOG_SNEH_MILAN_BRANDING, isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 export type RegistrationProgramHeaderProps = {
   campaignName?: string;
@@ -18,11 +19,13 @@ export type RegistrationProgramHeaderProps = {
  * Top Program Header for Public Registration & Success pages.
  *
  * Scoped dynamically:
- * - When under a campaign (e.g. /campaigns/snehmilan/register), displays the
- *   campaign's actual name ("Yog Sneh Milan - 2026") and slogan.
- * - "Home" and emblem clicks strictly route to the campaign's main URL, never
- *   redirecting out to the root portal.
- * - Legacy Seva Sushasan / Seva Sankalp district events maintain their official 5-line hierarchy.
+ * - When under Yog Sneh Milan campaign, displays the exact authoritative 3-line hierarchy:
+ *   1. ગુજરાત રાજ્ય યોગ બોર્ડ દ્વારા
+ *   2. નૂતનવર્ષ અભિનંદન
+ *   3. યોગ સ્નેહમિલન કાર્યક્રમ
+ *   Completely removing "અંતર્ગત", "Yog ane Dhyan Shibir", and "યોગ અને ધ્યાન શિબિર".
+ * - "Home" and emblem clicks strictly route to the campaign's main URL.
+ * - Legacy district events outside this campaign maintain their standard hierarchy.
  */
 export function RegistrationProgramHeader(props: RegistrationProgramHeaderProps) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -44,7 +47,16 @@ export function RegistrationProgramHeader(props: RegistrationProgramHeaderProps)
 
   const homeTarget = campaignSlug ? `/campaigns/${campaignSlug}` : eventSlug ? `/${eventSlug}` : "/";
 
-  // Dynamic branding text resolution
+  const isSnehMilan = isYogSnehMilanCampaign({
+    pathname,
+    campaignSlug,
+    campaignName: campaign?.name || props.campaignName,
+    campaignId: (config as any)?.campaign_id || campaign?.id,
+    eventSlug,
+    eventTitle: config.general?.title || props.programTitle,
+  });
+
+  // Dynamic branding text resolution for non-Sneh-Milan events
   const resolvedCampaignName =
     props.campaignName ||
     campaign?.name ||
@@ -82,7 +94,7 @@ export function RegistrationProgramHeader(props: RegistrationProgramHeaderProps)
             <Link to={homeTarget} className="block">
               <img
                 src={bannerImg}
-                alt={resolvedCampaignName}
+                alt={isSnehMilan ? YOG_SNEH_MILAN_BRANDING.line3 : resolvedCampaignName}
                 className="w-full max-h-48 sm:max-h-64 object-cover rounded-lg sm:rounded-xl shadow-xs mx-auto"
               />
             </Link>
@@ -111,35 +123,55 @@ export function RegistrationProgramHeader(props: RegistrationProgramHeaderProps)
           </Link>
         </div>
 
-        {/* 5-Line Gujarati Typography Hierarchy */}
-        <div className="space-y-1 sm:space-y-1.5 font-gujarati">
-          {/* Line 1: Official Authority */}
-          <div className="text-[13px] sm:text-[15px] md:text-[16px] font-semibold text-[#0F3E3E] tracking-normal leading-snug">
-            ગુજરાત રાજ્ય યોગ બોર્ડ દ્વારા
-          </div>
-
-          {/* Line 2: Supporting Sub-headline */}
-          {resolvedSlogan && (
-            <div className="text-[11.5px] sm:text-[13px] md:text-[14px] font-medium text-[#4B5563] leading-snug">
-              {resolvedSlogan}
+        {isSnehMilan ? (
+          /* Exact Yog Sneh Milan 3-Line Gujarati Typography Hierarchy */
+          <div className="space-y-1 sm:space-y-1.5 font-gujarati text-center">
+            {/* Line 1: Official Authority */}
+            <div className="text-[13px] sm:text-[15px] md:text-[17px] font-semibold text-[#0F3E3E] tracking-normal leading-snug">
+              {YOG_SNEH_MILAN_BRANDING.line1}
             </div>
-          )}
 
-          {/* Line 3: Campaign Title (Warm Orange/Saffron Highlight) */}
-          <div className="text-[17px] sm:text-[20px] md:text-[22px] font-bold text-[#EA580C] tracking-wide leading-snug">
-            “{resolvedCampaignName}”
+            {/* Line 2: Slogan / Greeting */}
+            <div className="text-[15px] sm:text-[18px] md:text-[20px] font-bold text-[#EA580C] sm:tracking-wide leading-snug">
+              {YOG_SNEH_MILAN_BRANDING.line2}
+            </div>
+
+            {/* Line 3: Prominent Main Heading */}
+            <h1 className="text-[24px] sm:text-[32px] md:text-[40px] font-extrabold text-[#0F3E3E] tracking-tight leading-tight pt-0.5">
+              {YOG_SNEH_MILAN_BRANDING.line3}
+            </h1>
           </div>
+        ) : (
+          /* Standard 5-Line Gujarati Typography Hierarchy for Non-Campaign Events */
+          <div className="space-y-1 sm:space-y-1.5 font-gujarati">
+            {/* Line 1: Official Authority */}
+            <div className="text-[13px] sm:text-[15px] md:text-[16px] font-semibold text-[#0F3E3E] tracking-normal leading-snug">
+              ગુજરાત રાજ્ય યોગ બોર્ડ દ્વારા
+            </div>
 
-          {/* Line 4: Small Connective Text */}
-          <div className="text-[11px] sm:text-[12px] md:text-[12.5px] font-normal text-[#6B7280] leading-snug">
-            અંતર્ગત
+            {/* Line 2: Supporting Sub-headline */}
+            {resolvedSlogan && (
+              <div className="text-[11.5px] sm:text-[13px] md:text-[14px] font-medium text-[#4B5563] leading-snug">
+                {resolvedSlogan}
+              </div>
+            )}
+
+            {/* Line 3: Campaign Title (Warm Orange/Saffron Highlight) */}
+            <div className="text-[17px] sm:text-[20px] md:text-[22px] font-bold text-[#EA580C] tracking-wide leading-snug">
+              “{resolvedCampaignName}”
+            </div>
+
+            {/* Line 4: Small Connective Text */}
+            <div className="text-[11px] sm:text-[12px] md:text-[12.5px] font-normal text-[#6B7280] leading-snug">
+              અંતર્ગત
+            </div>
+
+            {/* Line 5: Main Program Title (Largest Heading, Dark Teal) */}
+            <h1 className="text-[23px] sm:text-[30px] md:text-[36px] font-extrabold text-[#0F3E3E] tracking-tight leading-tight pt-0.5">
+              {resolvedProgramTitle}
+            </h1>
           </div>
-
-          {/* Line 5: Main Program Title (Largest Heading, Dark Teal) */}
-          <h1 className="text-[23px] sm:text-[30px] md:text-[36px] font-extrabold text-[#0F3E3E] tracking-tight leading-tight pt-0.5">
-            {resolvedProgramTitle}
-          </h1>
-        </div>
+        )}
       </div>
     </header>
   );

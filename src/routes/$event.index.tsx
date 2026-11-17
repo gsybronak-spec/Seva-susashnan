@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, Award, HeartPulse, Users, MapPin } from "lucide-react";
 import { useEventConfig, type EventConfigInitialData } from "@/hooks/use-event-config";
 import { EventInfoCard } from "@/components/event-info-card";
+import { BrandEmblem } from "@/components/site-header";
 import { BRAND } from "@/lib/brand";
 import { getEventRegistrationStatus } from "@/lib/event-config";
+import { YOG_SNEH_MILAN_BRANDING, isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 const loadEventHomeData = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
@@ -46,6 +48,13 @@ function EventHome() {
   const { features, general } = config;
   const regStatus = getEventRegistrationStatus(config);
 
+  const isSnehMilan = isYogSnehMilanCampaign({
+    campaignSlug: (config as any)?.campaign_slug,
+    campaignId: (config as any)?.campaign_id,
+    eventSlug,
+    eventTitle: general.title,
+  });
+
   const displayName = districtName ?? general.title ?? eventSlug;
 
   return (
@@ -53,20 +62,43 @@ function EventHome() {
       <section className="border-b border-border bg-gradient-to-b from-accent/40 to-background">
         <div className="mx-auto max-w-6xl px-4 py-14 sm:py-20">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-brand-primary">
-              <MapPin className="h-3.5 w-3.5" />
-              {BRAND.name}
-            </div>
-            <h1 className="text-3xl font-bold text-brand-primary sm:text-5xl">
-              {general.title}
-            </h1>
-            <p className="mt-3 text-lg font-medium text-brand-accent sm:text-xl">
-              {general.theme}
-            </p>
-            {general.description && (
-              <p className="mx-auto mt-5 max-w-2xl text-sm text-muted-foreground sm:text-base">
-                {general.description}
-              </p>
+            {isSnehMilan ? (
+              <div className="space-y-2 sm:space-y-3 font-gujarati mb-6">
+                {/* Official GSYB Emblem at top */}
+                <div className="flex justify-center mb-3">
+                  <BrandEmblem className="h-14 w-14 sm:h-16 sm:w-16 shrink-0 drop-shadow-xs" />
+                </div>
+                {/* Line 1: Official Authority */}
+                <div className="text-base sm:text-lg md:text-xl font-semibold text-[#0F3E3E] tracking-normal leading-snug">
+                  {YOG_SNEH_MILAN_BRANDING.line1}
+                </div>
+                {/* Line 2: Slogan / Greeting */}
+                <div className="text-lg sm:text-xl md:text-2xl font-bold text-[#EA580C] tracking-wide leading-snug">
+                  {YOG_SNEH_MILAN_BRANDING.line2}
+                </div>
+                {/* Line 3: Prominent Main Heading */}
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-[#0F3E3E] tracking-tight leading-tight pt-1">
+                  {YOG_SNEH_MILAN_BRANDING.line3}
+                </h1>
+              </div>
+            ) : (
+              <>
+                <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-brand-primary">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {BRAND.name}
+                </div>
+                <h1 className="text-3xl font-bold text-brand-primary sm:text-5xl">
+                  {general.title}
+                </h1>
+                <p className="mt-3 text-lg font-medium text-brand-accent sm:text-xl">
+                  {general.theme}
+                </p>
+                {general.description && (
+                  <p className="mx-auto mt-5 max-w-2xl text-sm text-muted-foreground sm:text-base">
+                    {general.description}
+                  </p>
+                )}
+              </>
             )}
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               {regStatus.isOpen && features.registration && (

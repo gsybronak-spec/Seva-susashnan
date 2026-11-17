@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireAdmin, requireSuperAdmin } from "@/lib/admin-auth";
 import type { Json } from "@/integrations/supabase/types";
+import { YOG_SNEH_MILAN_BRANDING, isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 // ============================================================
 // CAMPAIGNS — Gujarat State Yog Board → Campaigns → Events
@@ -212,6 +213,11 @@ export const adminCreateCampaign = createServerFn({ method: "POST" })
 
     // Automatically create a primary event under this campaign so registration works out of the box
     try {
+      const isSneh = isYogSnehMilanCampaign({
+        campaignSlug: data.slug,
+        campaignName: data.name,
+      });
+
       await supabaseAdmin.from("events").insert({
         campaign_id: row.id,
         slug: data.slug,
@@ -223,10 +229,12 @@ export const adminCreateCampaign = createServerFn({ method: "POST" })
         is_active: true,
         reg_prefix: (data.slug.slice(0, 4).toUpperCase().replace(/[^A-Z]/g, "") || "EVT"),
         general: {
-          title: data.name,
-          subtitle: data.slogan || "Gujarat State Yog Board",
-          theme: data.slogan || data.name,
-          description: data.description || `${data.name} organized by Gujarat State Yog Board.`,
+          title: isSneh ? YOG_SNEH_MILAN_BRANDING.line3 : data.name,
+          subtitle: isSneh ? YOG_SNEH_MILAN_BRANDING.line2 : data.slogan || "Gujarat State Yog Board",
+          theme: isSneh ? YOG_SNEH_MILAN_BRANDING.line3 : data.slogan || data.name,
+          description: isSneh
+            ? "ગુજરાત રાજ્ય યોગ બોર્ડ દ્વારા આયોજિત યોગ સ્નેહમિલન કાર્યક્રમ"
+            : data.description || `${data.name} organized by Gujarat State Yog Board.`,
           banner_url: data.banner_url || "",
           registration_enabled: regStatus === "open",
           registration_mode: "online",
