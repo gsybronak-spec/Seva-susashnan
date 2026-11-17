@@ -2,10 +2,32 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { BRAND } from "@/lib/brand";
 import { RegisterView } from "@/components/pages/register-view";
 import { getCampaignBySlug, type CampaignTheme } from "@/lib/campaign.functions";
 import type { EventConfigInitialData } from "@/hooks/use-event-config";
+
+function sanitizeEventForPublic<T extends Record<string, unknown> | null | undefined>(row: T): T {
+  if (!row) return row;
+  const clone: Record<string, unknown> = {};
+  const allowed = [
+    "id", "slug", "is_active", "is_template", "template_category",
+    "lifecycle_status", "publish_status", "archived_at", "type",
+    "description", "district", "district_id", "district_name",
+    "event_date", "event_time", "venue", "registration_open_at",
+    "registration_close_at", "max_registrations", "reg_prefix",
+    "general", "features", "live", "attendance", "certificate",
+    "referral", "whatsapp", "social", "status", "demo_mode",
+    "form", "partner_form", "created_at", "updated_at"
+  ];
+  for (const key of allowed) {
+    if (key in (row as Record<string, unknown>)) {
+      clone[key] = (row as Record<string, unknown>)[key];
+    }
+  }
+  return clone as T;
+}
 
 // The campaign register route reuses the existing RegisterView + event form
 // builder — campaigns provide the branding/scoping layer; registration itself
@@ -15,8 +37,6 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
     z.object({ slug: z.string().trim().min(1).max(80).toLowerCase() }).parse(input),
   )
   .handler(async ({ data }) => {
-    const z = await import("zod");
-    void z;
     try {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const { data: campaign } = await supabaseAdmin
@@ -59,9 +79,8 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
       if (!resolved?.event) {
         return { ok: false as const, error: "Event details could not be loaded." };
       }
-      const { stripAdminOnlyFields } = await import("@/lib/event.functions");
       const initialData: EventConfigInitialData = {
-        config: stripAdminOnlyFields(resolved.event),
+        config: sanitizeEventForPublic(resolved.event),
         district_name: resolved.district_name,
         coverage_districts: resolved.coverage_districts,
       };
@@ -87,8 +106,6 @@ export const Route = createFileRoute("/campaigns/$slug/register")({
   }),
   component: CampaignRegisterPage,
 });
-
-import { z } from "zod";
 
 function themeStyle(theme: CampaignTheme | null | undefined): React.CSSProperties {
   if (!theme) return {};
