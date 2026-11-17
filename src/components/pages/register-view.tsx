@@ -529,10 +529,12 @@ export function RegisterView({
       // Save card access token and auto-download pending state in sessionStorage
       if (typeof window !== "undefined") {
         try {
-          window.sessionStorage.setItem(
-            "gsyb_auto_download:" + res.registration_number,
-            "pending"
-          );
+          if (!isSnehMilan) {
+            window.sessionStorage.setItem(
+              "gsyb_auto_download:" + res.registration_number,
+              "pending"
+            );
+          }
           if (res.card_access) {
             window.sessionStorage.setItem(`gsyb_card_access:${res.registration_number}`, res.card_access);
             window.sessionStorage.setItem(`vadodara_card_access:${res.registration_number}`, res.card_access);
@@ -548,7 +550,7 @@ export function RegisterView({
         search: {
           reg: res.registration_number,
           key: res.card_access,
-          auto: "1",
+          ...(isSnehMilan ? {} : { auto: "1" }),
         },
       });
     } catch (err) {
@@ -799,7 +801,9 @@ export function RegisterView({
                   </Button>
 
                   <p className="text-[11.5px] text-center text-[#5C7065] leading-relaxed">
-                    🔒 નોંધણી પૂર્ણ થતાં જ તમારો ડિજિટલ ID કાર્ડ અને સત્તાવાર પ્રવેશ QR કોડ તરત જ મળશે.
+                    {isSnehMilan
+                      ? "🔒 આપની નોંધણી સુરક્ષિત રીતે સબમિટ થશે."
+                      : "🔒 નોંધણી પૂર્ણ થતાં જ તમારો ડિજિટલ ID કાર્ડ અને સત્તાવાર પ્રવેશ QR કોડ તરત જ મળશે."}
                   </p>
                 </div>
               </form>

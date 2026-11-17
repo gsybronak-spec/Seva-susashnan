@@ -19,6 +19,7 @@ export function isYogSnehMilanCampaign(params: {
   campaignId?: string | null;
   eventSlug?: string | null;
   eventTitle?: string | null;
+  registrationNumber?: string | null;
 }): boolean {
   const p = (params.pathname || "").toLowerCase();
   const cs = (params.campaignSlug || "").toLowerCase();
@@ -26,6 +27,7 @@ export function isYogSnehMilanCampaign(params: {
   const cid = params.campaignId || "";
   const es = (params.eventSlug || "").toLowerCase();
   const et = (params.eventTitle || "").toLowerCase();
+  const rn = (params.registrationNumber || "").toUpperCase();
 
   return (
     p.includes("snehmilan") ||
@@ -38,6 +40,7 @@ export function isYogSnehMilanCampaign(params: {
     es.includes("snehmilan") ||
     es.includes("sneh-milan") ||
     et.includes("sneh") ||
-    et.includes("સ્નેહ")
+    et.includes("સ્નેહ") ||
+    rn.startsWith("YSM")
   );
 }

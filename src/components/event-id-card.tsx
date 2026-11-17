@@ -84,9 +84,15 @@ export function EventIdCard({
     };
   }, [effectiveAccess, eventId, load, registrationNumber]);
 
+  const isSnehMilanCard = isYogSnehMilanCampaign({
+    campaignName: data?.campaign_name,
+    eventTitle: data?.event_title,
+    registrationNumber,
+  });
+
   // One-time automatic download effect
   useEffect(() => {
-    if (!data?.ok || !qr || autoDownloadTriggered.current) return;
+    if (!data?.ok || !qr || autoDownloadTriggered.current || isSnehMilanCard) return;
 
     const guardKey = `gsyb_auto_download:${registrationNumber}`;
     const isPending =
@@ -482,6 +488,11 @@ export function EventIdCard({
         </p>
       </div>
     );
+  }
+
+  // Yog Sneh Milan does not use digital ID cards
+  if (isSnehMilanCard) {
+    return null;
   }
 
   const isFiveField =

@@ -10,6 +10,7 @@ import {
   formatEventDate,
 } from "@/lib/event-config";
 import { EventIdCard } from "@/components/event-id-card";
+import { isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 export function SuccessView({
   reg,
@@ -25,6 +26,13 @@ export function SuccessView({
   const { config } = useEventConfig(eventSlug ?? null);
   const [copied, setCopied] = useState<"reg" | "link" | "msg" | null>(null);
   const registerPath = eventSlug ? `/${eventSlug}/register` : "/register";
+
+  const isSnehMilan = isYogSnehMilanCampaign({
+    eventSlug,
+    eventTitle: config.general?.title,
+    campaignId: (config as any)?.campaign_id,
+    registrationNumber: reg,
+  });
 
   const [shareUrl, setShareUrl] = useState(`${registerPath}?ref=${reg}`);
   useEffect(() => {
@@ -91,7 +99,9 @@ export function SuccessView({
                 Registration Successful!
               </p>
               <p className="mt-1.5 text-xs sm:text-sm text-[#5C7065] max-w-md mx-auto">
-                તમારી નોંધણી સફળતાપૂર્વક પૂર્ણ થઈ ગઈ છે. તમારો સત્તાવાર પ્રવેશ પાસ અને QR કોડ નીચે ઉપલબ્ધ છે.
+                {isSnehMilan
+                  ? "યોગ સ્નેહમિલન કાર્યક્રમ માટે આપની નોંધણી સફળતાપૂર્વક પૂર્ણ થઈ ગઈ છે. આપનો નોંધણી ક્રમાંક સાચવી રાખશો."
+                  : "તમારી નોંધણી સફળતાપૂર્વક પૂર્ણ થઈ ગઈ છે. તમારો સત્તાવાર પ્રવેશ પાસ અને QR કોડ નીચે ઉપલબ્ધ છે."}
               </p>
             </div>
 
@@ -116,15 +126,17 @@ export function SuccessView({
           </div>
         </div>
 
-        {/* STEP 2: Official Digital ID Card with signed QR Code & Prominent Download Action */}
-        <div className="space-y-3">
-          <EventIdCard
-            registrationNumber={reg}
-            cardAccess={cardAccess}
-            eventId={config.id}
-            autoDownload={autoDownload}
-          />
-        </div>
+        {/* STEP 2: Official Digital ID Card with signed QR Code & Prominent Download Action (Hidden for Sneh Milan) */}
+        {!isSnehMilan && (
+          <div className="space-y-3">
+            <EventIdCard
+              registrationNumber={reg}
+              cardAccess={cardAccess}
+              eventId={config.id}
+              autoDownload={autoDownload}
+            />
+          </div>
+        )}
 
         {/* STEP 3: Clear Next Step Instructions for the Participant */}
         <div className="p-5 sm:p-6 rounded-2xl bg-white/90 backdrop-blur-md border border-[#E8E0D5] shadow-sm space-y-3">
@@ -133,18 +145,33 @@ export function SuccessView({
             <span>મહત્વપૂર્ણ સૂચનાઓ / Next Steps</span>
           </h3>
           <ul className="text-xs text-[#2D4A3E] space-y-2 leading-relaxed">
-            <li className="flex items-start gap-2">
-              <span className="font-bold text-[#D97706]">•</span>
-              <span><strong>ID કાર્ડ સાચવો:</strong> ઉપર આપેલ બટન પર ક્લિક કરીને તમારો ડિજિટલ ID કાર્ડ (PNG) ડાઉનલોડ કરી લો.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="font-bold text-[#D97706]">•</span>
-              <span><strong>સમયસર પહોંચો:</strong> શિબિર શરૂ થવાના ૧૫ મિનિટ પહેલા સ્થળ પર પહોંચવું અનિવાર્ય છે.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="font-bold text-[#D97706]">•</span>
-              <span><strong>ગેટ એન્ટ્રી:</strong> પ્રવેશ દ્વાર પર તમારો QR કોડ સ્કેન કરાવીને હાજરી નોંધાવો.</span>
-            </li>
+            {isSnehMilan ? (
+              <>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-[#D97706]">•</span>
+                  <span><strong>નોંધણી ક્રમાંક સાચવો:</strong> આપનો નોંધણી ક્રમાંક ({reg}) સાચવી રાખશો અને કાર્યક્રમમાં ઉપસ્થિતિ સમયે સાથે રાખવો.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-[#D97706]">•</span>
+                  <span><strong>સમયસર પહોંચો:</strong> કાર્યક્રમ શરૂ થવાના ૧૫ મિનિટ પહેલા નિર્ધારિત સ્થળ પર પહોંચવું અનિવાર્ય છે.</span>
+                </li>
+              </>
+            ) : (
+              <>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-[#D97706]">•</span>
+                  <span><strong>ID કાર્ડ સાચવો:</strong> ઉપર આપેલ બટન પર ક્લિક કરીને તમારો ડિજિટલ ID કાર્ડ (PNG) ડાઉનલોડ કરી લો.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-[#D97706]">•</span>
+                  <span><strong>સમયસર પહોંચો:</strong> શિબિર શરૂ થવાના ૧૫ મિનિટ પહેલા સ્થળ પર પહોંચવું અનિવાર્ય છે.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="font-bold text-[#D97706]">•</span>
+                  <span><strong>ગેટ એન્ટ્રી:</strong> પ્રવેશ દ્વાર પર તમારો QR કોડ સ્કેન કરાવીને હાજરી નોંધાવો.</span>
+                </li>
+              </>
+            )}
           </ul>
         </div>
 

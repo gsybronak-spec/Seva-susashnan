@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BRAND } from "@/lib/brand";
 import { EventIdCard } from "@/components/event-id-card";
+import { isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 export const Route = createFileRoute("/idcard")({
   validateSearch: z.object({
@@ -124,28 +125,57 @@ function IdCardPage() {
 
         {/* If participant registration number is active, render the ID Card */}
         {regNumber ? (
-          <div className="space-y-6">
-            <EventIdCard
-              registrationNumber={regNumber}
-              cardAccess={accessKey}
-              eventId={eventId}
-            />
-
-            <div className="text-center print:hidden pt-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setRegNumber("");
-                  setAccessKey("");
-                  setInputVal("");
-                }}
-                className="text-xs text-[#5C7065] hover:text-[#0F3E3E]"
-              >
-                Look up another participant ID card
-              </Button>
+          isYogSnehMilanCampaign({ registrationNumber: regNumber }) ? (
+            <div className="max-w-md mx-auto p-8 text-center rounded-2xl bg-amber-50/80 border border-amber-200 shadow-sm space-y-4">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+                <IdCardIcon className="h-7 w-7 text-amber-700" />
+              </div>
+              <div className="space-y-1.5">
+                <h2 className="text-lg font-bold text-[#0F3E3E]">યોગ સ્નેહમિલન કાર્યક્રમ</h2>
+                <p className="text-xs sm:text-sm text-[#5C7065] leading-relaxed">
+                  યોગ સ્નેહમિલન કાર્યક્રમ માટે ડિજિટલ ID કાર્ડ જરૂરી નથી. આપનો નોંધણી નંબર{" "}
+                  <strong className="font-mono text-[#0F3E3E]">{regNumber}</strong> સાચવી રાખશો અને કાર્યક્રમમાં ઉપસ્થિત રહેશો.
+                </p>
+              </div>
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setRegNumber("");
+                    setAccessKey("");
+                    setInputVal("");
+                  }}
+                  className="text-xs border-[#E8E0D5] text-[#0F3E3E] hover:bg-white"
+                >
+                  બીજો નંબર શોધો / Search Another
+                </Button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-6">
+              <EventIdCard
+                registrationNumber={regNumber}
+                cardAccess={accessKey}
+                eventId={eventId}
+              />
+
+              <div className="text-center print:hidden pt-4">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setRegNumber("");
+                    setAccessKey("");
+                    setInputVal("");
+                  }}
+                  className="text-xs text-[#5C7065] hover:text-[#0F3E3E]"
+                >
+                  Look up another participant ID card
+                </Button>
+              </div>
+            </div>
+          )
         ) : (
           /* Search / Lookup Form */
           <div className="max-w-md mx-auto p-6 sm:p-8 rounded-2xl bg-white border border-[#E8E0D5] shadow-sm space-y-5">

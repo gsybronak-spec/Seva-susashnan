@@ -7,6 +7,7 @@ import { BRAND } from "@/lib/brand";
 import { getPublicSettings } from "@/lib/registration.functions";
 import { useCurrentEvent } from "@/hooks/use-current-event";
 import { useEventConfig } from "@/hooks/use-event-config";
+import { isYogSnehMilanCampaign } from "@/lib/campaign-branding";
 
 // Official Gujarat State Yog Board emblem (public/logo-gsyb.png).
 export function BrandEmblem({ className }: { className?: string }) {
@@ -51,6 +52,12 @@ export function SiteHeader() {
   const navActiveClass =
     "rounded-md px-3 py-2 text-sm bg-muted text-brand-primary font-bold";
 
+  const isSnehMilan = isYogSnehMilanCampaign({
+    campaignSlug,
+    pathname,
+    eventSlug,
+  });
+
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur">
       <div className="brand-bar h-1.5 w-full" />
@@ -89,13 +96,15 @@ export function SiteHeader() {
           >
             {campaignSlug ? "Registration" : "Events / Registration"}
           </Link>
-          <Link
-            to="/idcard"
-            className={navLinkClass}
-            activeProps={{ className: navActiveClass }}
-          >
-            Digital ID Card
-          </Link>
+          {!isSnehMilan && (
+            <Link
+              to="/idcard"
+              className={navLinkClass}
+              activeProps={{ className: navActiveClass }}
+            >
+              Digital ID Card
+            </Link>
+          )}
           <Link
             to="/certificate"
             className={navLinkClass}
@@ -143,14 +152,16 @@ export function SiteHeader() {
               <CalendarDays className="h-4 w-4 text-brand-primary" />
               {campaignSlug ? "Registration" : "Events / Registration"}
             </Link>
-            <Link
-              to="/idcard"
-              onClick={() => setMobileMenuOpen(false)}
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted"
-            >
-              <IdCard className="h-4 w-4 text-brand-primary" />
-              Digital ID Card
-            </Link>
+            {!isSnehMilan && (
+              <Link
+                to="/idcard"
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted"
+              >
+                <IdCard className="h-4 w-4 text-brand-primary" />
+                Digital ID Card
+              </Link>
+            )}
             <Link
               to="/certificate"
               onClick={() => setMobileMenuOpen(false)}
