@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { RegisterView } from "@/components/pages/register-view";
@@ -46,6 +46,19 @@ export const Route = createFileRoute("/$event/register")({
     };
   },
   validateSearch: (s) => searchSchema.parse(s),
+  beforeLoad: ({ params, search }) => {
+    const slug = (params.event || "").toLowerCase();
+    if (slug === "yog-sneh-milan-2026" || slug === "snehmilan") {
+      throw redirect({
+        to: "/campaigns/$slug/register",
+        params: { slug: "snehmilan" },
+        search: {
+          ...(search.ref ? { ref: search.ref } : {}),
+          ...(search.partner ? { partner: search.partner } : {}),
+        },
+      });
+    }
+  },
   loader: async ({ params }) => {
     const res = await loadRegistrationData({ data: { event: params.event } });
     return { initialData: res.initialData };

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Copy, CheckCircle2, Share2, Link as LinkIcon, Sparkles } from "lucide-react";
+import { Copy, CheckCircle2, Share2, Link as LinkIcon, Sparkles, MessageCircle } from "lucide-react";
 import { useEventConfig } from "@/hooks/use-event-config";
 import { WhatsAppCard } from "@/components/whatsapp-card";
 import {
@@ -25,7 +25,6 @@ export function SuccessView({
 }) {
   const { config } = useEventConfig(eventSlug ?? null);
   const [copied, setCopied] = useState<"reg" | "link" | "msg" | null>(null);
-  const registerPath = eventSlug ? `/${eventSlug}/register` : "/register";
 
   const isSnehMilan = isYogSnehMilanCampaign({
     eventSlug,
@@ -34,6 +33,12 @@ export function SuccessView({
     registrationNumber: reg,
   });
 
+  const registerPath = isSnehMilan
+    ? "/campaigns/snehmilan/register"
+    : eventSlug
+      ? `/${eventSlug}/register`
+      : "/register";
+
   const [shareUrl, setShareUrl] = useState(`${registerPath}?ref=${reg}`);
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -41,13 +46,18 @@ export function SuccessView({
     }
   }, [registerPath, reg]);
 
-  const shareText = formatShareMessage(config.referral.share_template, {
-    title: config.general.title,
-    theme: config.general.theme,
-    date: formatEventDate(config.general.event_date) || "Yet to be Declared",
-    time: formatTimeRange(config.general.start_time, config.general.end_time) || "Yet to be Declared",
-    link: shareUrl,
-  });
+  const shareText = isSnehMilan
+    ? `🧘 ગુજરાત રાજ્ય યોગ બોર્ડ દ્વારા નૂતનવર્ષ અભિનંદન — યોગ સ્નેહમિલન કાર્યક્રમ ૨૦૨૬
+
+નૂતન વર્ષ નિમિત્તે યોગ સ્નેહમિલન કાર્યક્રમમાં સહભાગી થવા માટે નીચે આપેલ લિંક પર ક્લિક કરી આપની નિઃશુલ્ક નોંધણી કરો:
+${shareUrl}`
+    : formatShareMessage(config.referral.share_template, {
+        title: config.general.title,
+        theme: config.general.theme,
+        date: formatEventDate(config.general.event_date) || "Yet to be Declared",
+        time: formatTimeRange(config.general.start_time, config.general.end_time) || "Yet to be Declared",
+        link: shareUrl,
+      });
 
   async function copy(text: string, which: "reg" | "link" | "msg") {
     try {
@@ -177,27 +187,58 @@ export function SuccessView({
             <div className="flex items-center gap-2 text-[#0F3E3E]">
               <Share2 className="h-5 w-5 text-[#D97706]" />
               <h3 className="text-base sm:text-lg font-bold">
-                Invite Friends & Family to the Camp
+                {isSnehMilan
+                  ? "યોગ સ્નેહમિલન માટે અન્ય લોકોને આમંત્રિત કરો / Share Referral"
+                  : "Invite Friends & Family to the Camp"}
               </h3>
             </div>
             <p className="text-xs text-[#5C7065]">
-              Share your personal referral link with your family and yoga enthusiasts.
+              {isSnehMilan
+                ? "આપની વ્યક્તિગત રેફરલ લિંક દ્વારા મિત્રો અને પરિવારજનોને યોગ સ્નેહમિલન કાર્યક્રમમાં જોડાવા આમંત્રણ આપો."
+                : "Share your personal referral link with your family and yoga enthusiasts."}
             </p>
 
             <div className="flex flex-col sm:flex-row gap-2 rounded-xl border border-[#E8E0D5] bg-[#FAF8F5] p-2.5">
               <input
                 readOnly
                 value={shareUrl}
-                className="w-full bg-transparent text-xs font-mono text-[#0F3E3E] outline-none px-2"
+                className="w-full bg-transparent text-xs font-mono text-[#0F3E3E] outline-none px-2 select-all"
                 onFocus={(e) => e.currentTarget.select()}
               />
               <Button
                 size="sm"
                 onClick={() => copy(shareUrl, "link")}
-                className="bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white text-xs whitespace-nowrap h-10 px-4 rounded-lg font-medium"
+                className="bg-[#0F3E3E] hover:bg-[#1C4E4E] text-white text-xs whitespace-nowrap h-10 px-4 rounded-lg font-medium cursor-pointer"
               >
                 <LinkIcon className="mr-1.5 h-3.5 w-3.5" />
                 {copied === "link" ? "Copied!" : "Copy Link"}
+              </Button>
+            </div>
+
+            {/* Direct WhatsApp Share & Copy Message Actions */}
+            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <Button
+                asChild
+                className="h-11 px-5 bg-[#25D366] hover:bg-[#20BD5A] text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs gap-2 cursor-pointer"
+              >
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageCircle className="w-4 h-4 fill-current" />
+                  <span>WhatsApp પર રેફરલ શેર કરો</span>
+                </a>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => copy(shareText, "msg")}
+                className="h-11 px-4 border-[#E8E0D5] text-[#0F3E3E] hover:bg-[#FAF8F5] text-xs font-medium rounded-xl cursor-pointer"
+              >
+                <Copy className="mr-1.5 h-3.5 w-3.5" />
+                {copied === "msg" ? "મેસેજ કોપી થયો!" : "Copy Full Message"}
               </Button>
             </div>
           </div>

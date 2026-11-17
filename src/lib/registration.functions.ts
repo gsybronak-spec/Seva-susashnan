@@ -243,6 +243,9 @@ export const registerParticipant = createServerFn({ method: "POST" })
       };
     }
 
+    const rawRef = (data.ref || (data.custom_fields as any)?.referral_code || "").toString().trim().toUpperCase();
+    const campaignId = (resolved.event as any)?.campaign_id ?? null;
+
     // All pre-insert lookups are independent of each other, so they run in
     // parallel. Previously they were awaited one after another (duplicate ->
     // referral -> partner), which stacked 3 sequential round trips on top of
@@ -256,14 +259,12 @@ export const registerParticipant = createServerFn({ method: "POST" })
         .eq("mobile", data.mobile)
         .eq("event_id", event_id)
         .maybeSingle(),
-      // Optional referral validation (must belong to the SAME event so each
-      // event has an isolated referral graph).
-      data.ref
+      // Optional referral validation (must belong to the SAME event or campaign).
+      rawRef
         ? supabaseAdmin
             .from("registrations")
-            .select("registration_number")
-            .eq("registration_number", data.ref)
-            .eq("event_id", event_id)
+            .select("id, registration_number, mobile, event_id, campaign_id, full_name")
+            .ilike("registration_number", rawRef)
             .maybeSingle()
         : Promise.resolve({ data: null }),
       // Optional partner validation.
@@ -285,8 +286,27 @@ export const registerParticipant = createServerFn({ method: "POST" })
       };
     }
 
-    const refRow = refRes.data as { registration_number: string } | null;
-    const referred_by: string | null = refRow ? refRow.registration_number : null;
+    const refRow = refRes.data as {
+      id: string;
+      registration_number: string;
+      mobile: string;
+      event_id: string;
+      campaign_id?: string | null;
+      full_name?: string | null;
+    } | null;
+
+    let referred_by: string | null = null;
+    if (refRow) {
+      const belongsToEvent = refRow.event_id === event_id;
+      const belongsToCampaign =
+        Boolean(campaignId && refRow.campaign_id && refRow.campaign_id === campaignId);
+      const isSelf = refRow.mobile === data.mobile;
+
+      // Only accept if referrer belongs to the same event or campaign, and is NOT self-referral
+      if ((belongsToEvent || belongsToCampaign) && !isSelf) {
+        referred_by = refRow.registration_number;
+      }
+    }
 
     // If a partner is provided AND that partner is scoped to a specific
     // district, ensure it matches this district.
@@ -373,8 +393,15 @@ export const registerParticipant = createServerFn({ method: "POST" })
       if (cf.reference_name) {
         cf.reference_name = String(cf.reference_name).trim();
       }
-      if (cf.referral_code || data.ref) {
-        cf.referral_code = String(cf.referral_code || data.ref).trim().toUpperCase();
+      if (referred_by) {
+        cf.referred_by = referred_by;
+        cf.referral_code = referred_by;
+        if (refRow?.full_name && !cf.reference_name) {
+          cf.reference_name = refRow.full_name;
+        }
+      } else {
+        delete cf.referred_by;
+        delete cf.referral_code;
       }
       if (cf.zone) {
         cf.zone = String(cf.zone).trim();
@@ -419,6 +446,7 @@ export const registerParticipant = createServerFn({ method: "POST" })
         partner_name,
         event_id,
         district_id,
+        campaign_id: campaignId,
         // Unique per-participant QR token used on the digital ID card for
         // physical check-in at the shibir venue.
         qr_token: crypto.randomUUID().replace(/-/g, ""),
@@ -622,7 +650,7 @@ export const lookupReferralCode = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const rawRef = data.ref.trim().toUpperCase();
-    if (!rawRef || !/^SYB[A-Z0-9_-]{4,}$/i.test(rawRef)) {
+    if (!rawRef || !/^[A-Z0-9_-]{3,25}$/i.test(rawRef)) {
       return {
         ok: true as const,
         valid: false as const,
@@ -641,21 +669,26 @@ export const lookupReferralCode = createServerFn({ method: "POST" })
     }
 
     const event_id = resolved.event.id as string;
+    const campaign_id = (resolved.event as any)?.campaign_id as string | undefined;
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // Strictly timeout after 5 seconds so it can never hang
-    const queryPromise = supabaseAdmin
+    let query = supabaseAdmin
       .from("registrations")
-      .select("registration_number, full_name")
-      .eq("registration_number", rawRef)
-      .eq("event_id", event_id)
-      .maybeSingle();
+      .select("registration_number, full_name, event_id, campaign_id")
+      .ilike("registration_number", rawRef);
+
+    if (campaign_id) {
+      query = query.or(`event_id.eq.${event_id},campaign_id.eq.${campaign_id}`);
+    } else {
+      query = query.eq("event_id", event_id);
+    }
 
     const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) =>
       setTimeout(() => resolve({ data: null, error: new Error("Referral lookup timed out") }), 5000),
     );
 
-    const { data: row, error } = await Promise.race([queryPromise, timeoutPromise]);
+    const { data: row, error } = await Promise.race([query.maybeSingle(), timeoutPromise]);
     if (error || !row) {
       return {
         ok: true as const,
@@ -1130,7 +1163,7 @@ export const adminList = createServerFn({ method: "POST" })
       else if (filter.mode === "many") query = query.in("event_id", filter.ids);
       if (s) {
         query = query.or(
-          `full_name.ilike.%${safeSearch}%,mobile.ilike.%${safeSearch}%,registration_number.ilike.%${safeSearch}%,gender.ilike.%${safeSearch}%`,
+          `full_name.ilike.%${safeSearch}%,mobile.ilike.%${safeSearch}%,registration_number.ilike.%${safeSearch}%,referred_by.ilike.%${safeSearch}%,gender.ilike.%${safeSearch}%`,
         );
       }
       const { data: page, error } = await query;
@@ -1288,7 +1321,7 @@ export const adminExportBatch = createServerFn({ method: "POST" })
       
       if (s) {
         query = query.or(
-          `full_name.ilike.%${safeSearch}%,mobile.ilike.%${safeSearch}%,registration_number.ilike.%${safeSearch}%,gender.ilike.%${safeSearch}%`,
+          `full_name.ilike.%${safeSearch}%,mobile.ilike.%${safeSearch}%,registration_number.ilike.%${safeSearch}%,referred_by.ilike.%${safeSearch}%,gender.ilike.%${safeSearch}%`,
         );
       }
       

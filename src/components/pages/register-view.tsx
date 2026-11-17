@@ -126,12 +126,43 @@ export function RegisterView({
     slug: string;
   } | null>(null);
 
+  // Store and restore referral code across page refreshes
+  const [effectiveRef, setEffectiveRef] = useState<string>(() => {
+    if (refCode && refCode.trim()) {
+      const clean = refCode.trim().toUpperCase();
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem(`gsyb_ref:${eventSlug || "default"}`, clean);
+        } catch {}
+      }
+      return clean;
+    }
+    if (typeof window !== "undefined") {
+      try {
+        return window.sessionStorage.getItem(`gsyb_ref:${eventSlug || "default"}`) || "";
+      } catch {}
+    }
+    return "";
+  });
+
+  useEffect(() => {
+    if (refCode && refCode.trim()) {
+      const clean = refCode.trim().toUpperCase();
+      setEffectiveRef(clean);
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem(`gsyb_ref:${eventSlug || "default"}`, clean);
+        } catch {}
+      }
+    }
+  }, [refCode, eventSlug]);
+
   // Referral state
   const [referralInfo, setReferralInfo] = useState<{
     status: "idle" | "validating" | "valid" | "invalid";
     referrerName?: string;
     message?: string;
-  }>(() => (ref ? { status: "validating" } : { status: "idle" }));
+  }>(() => (effectiveRef ? { status: "validating" } : { status: "idle" }));
 
   // Dynamic form state
   const [formValues, setFormValues] = useState<Record<string, any>>(() => {
@@ -139,8 +170,8 @@ export function RegisterView({
     const districtField = rawFields.find((f: any) => f.key === "district");
     const hasDistrictOptions = Array.isArray(districtField?.options) && districtField.options.length > 0;
     return {
-      ref: ref ? ref.toUpperCase() : "",
-      referral_code: ref ? ref.toUpperCase() : "",
+      ref: effectiveRef ? effectiveRef.toUpperCase() : "",
+      referral_code: effectiveRef ? effectiveRef.toUpperCase() : "",
       ...(isSingleDistrictLocked && targetDistrict && !hasDistrictOptions ? { district: targetDistrict } : {}),
     };
   });
@@ -169,12 +200,12 @@ export function RegisterView({
 
   // Non-blocking referral check
   useEffect(() => {
-    if (!ref) {
+    if (!effectiveRef) {
       setReferralInfo({ status: "idle" });
       return;
     }
     let cancelled = false;
-    lookupRef({ data: { ref, district_slug: eventSlug } })
+    lookupRef({ data: { ref: effectiveRef, district_slug: eventSlug } })
       .then((res) => {
         if (cancelled) return;
         if (res.ok && res.valid) {
@@ -210,7 +241,7 @@ export function RegisterView({
     return () => {
       cancelled = true;
     };
-  }, [ref, eventSlug, lookupRef]);
+  }, [effectiveRef, eventSlug, lookupRef]);
 
   // Compute active event fields
   const fields = useMemo(() => {
@@ -420,8 +451,8 @@ export function RegisterView({
     const gender = formValues.gender && ["Male", "Female"].includes(formValues.gender) ? formValues.gender : undefined;
     const dob = formValues.date_of_birth ? String(formValues.date_of_birth).trim() : undefined;
     const designation = formValues.participant_type || formValues.designation || undefined;
-    const refCodeVal = formValues.referral_code || formValues.ref
-      ? String(formValues.referral_code || formValues.ref).trim().toUpperCase()
+    const refCodeVal = effectiveRef || formValues.referral_code || formValues.ref
+      ? String(effectiveRef || formValues.referral_code || formValues.ref).trim().toUpperCase()
       : undefined;
 
     // Separate builtin vs custom_fields
@@ -529,6 +560,7 @@ export function RegisterView({
       // Save card access token and auto-download pending state in sessionStorage
       if (typeof window !== "undefined") {
         try {
+          window.sessionStorage.removeItem(`gsyb_ref:${eventSlug || "default"}`);
           if (!isSnehMilan) {
             window.sessionStorage.setItem(
               "gsyb_auto_download:" + res.registration_number,
@@ -717,11 +749,19 @@ export function RegisterView({
             </div>
 
             {/* Referral Info Banner */}
-            {ref && referralInfo.status === "valid" && (
+            {effectiveRef && referralInfo.status === "valid" && (
               <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center gap-2.5 animate-in fade-in">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>
-                  Referred by <strong>{referralInfo.referrerName || ref.toUpperCase()}</strong> ({ref.toUpperCase()})
+                  Referred by <strong>{referralInfo.referrerName || effectiveRef.toUpperCase()}</strong> ({effectiveRef.toUpperCase()})
+                </span>
+              </div>
+            )}
+            {effectiveRef && referralInfo.status === "invalid" && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2.5 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  {referralInfo.message || "Invalid referral code. You can still register normally below."}
                 </span>
               </div>
             )}
