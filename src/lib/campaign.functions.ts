@@ -183,6 +183,10 @@ export const adminCreateCampaign = createServerFn({ method: "POST" })
       .eq("slug", data.slug)
       .maybeSingle();
     if (existing) return { ok: false as const, error: "A campaign with this slug already exists." };
+
+    const publishStatus = data.publish_status ?? "published";
+    const regStatus = data.registration_status ?? "open";
+
     const { data: row, error } = await supabaseAdmin
       .from("campaigns")
       .insert({
@@ -199,12 +203,101 @@ export const adminCreateCampaign = createServerFn({ method: "POST" })
         banner_url: data.banner_url ?? null,
         seo_title: data.seo_title ?? null,
         theme: data.theme ?? {},
-        publish_status: data.publish_status ?? "draft",
-        registration_status: data.registration_status ?? "closed",
+        publish_status: publishStatus,
+        registration_status: regStatus,
       })
       .select("id, slug")
       .single();
     if (error) return { ok: false as const, error: error.message };
+
+    // Automatically create a primary event under this campaign so registration works out of the box
+    try {
+      await supabaseAdmin.from("events").insert({
+        campaign_id: row.id,
+        slug: data.slug,
+        district: data.venue || "Gujarat",
+        district_name: data.venue || "Gujarat",
+        publish_status: publishStatus,
+        lifecycle_status: "upcoming",
+        is_active: true,
+        reg_prefix: (data.slug.slice(0, 4).toUpperCase().replace(/[^A-Z]/g, "") || "EVT"),
+        general: {
+          title: data.name,
+          subtitle: data.slogan || "Gujarat State Yog Board",
+          theme: data.slogan || data.name,
+          description: data.description || `${data.name} organized by Gujarat State Yog Board.`,
+          banner_url: data.banner_url || "",
+          registration_enabled: regStatus === "open",
+          registration_mode: "online",
+        },
+        features: {
+          registration: regStatus === "open",
+          attendance: true,
+          certificate: true,
+          referral: true,
+          footer: true,
+        },
+        form: {
+          version: 2,
+          fields: [
+            {
+              key: "full_name",
+              type: "text",
+              label: "Full Name / પૂરું નામ",
+              order: 1,
+              hidden: false,
+              unique: false,
+              builtin: true,
+              enabled: true,
+              options: [],
+              readonly: false,
+              required: true,
+              validation: { min: 2, max: 120 },
+              placeholder: "ENTER YOUR FULL NAME",
+              help: "Enter your official name as it should appear on your ID card.",
+              default_value: "",
+            },
+            {
+              key: "mobile",
+              type: "phone",
+              label: "Mobile Number / મોબાઈલ નંબર",
+              order: 2,
+              hidden: false,
+              unique: true,
+              builtin: true,
+              enabled: true,
+              options: [],
+              readonly: false,
+              required: true,
+              validation: { pattern: "^[6-9]\\d{9}$", message: "Enter a valid 10-digit Indian mobile number." },
+              placeholder: "10 DIGIT MOBILE NUMBER",
+              help: "Your Participant ID and pass will be linked to this mobile number.",
+              default_value: "",
+            },
+            {
+              key: "district",
+              type: "text",
+              label: "District / જિલ્લો",
+              order: 3,
+              hidden: false,
+              unique: false,
+              builtin: true,
+              enabled: true,
+              options: [],
+              readonly: false,
+              required: true,
+              validation: {},
+              placeholder: "ENTER YOUR DISTRICT",
+              help: "Enter your district name.",
+              default_value: "",
+            },
+          ],
+        },
+      });
+    } catch (e) {
+      console.warn("Primary event auto-creation notice:", e);
+    }
+
     return { ok: true as const, campaign: row };
   });
 
@@ -245,6 +338,36 @@ export const adminUpdateCampaign = createServerFn({ method: "POST" })
 
     const { error } = await supabaseAdmin.from("campaigns").update(patch as never).eq("id", data.id);
     if (error) return { ok: false as const, error: error.message };
+
+    // Synchronize linked events under this campaign
+    try {
+      const { data: primaryEvents } = await supabaseAdmin
+        .from("events")
+        .select("id, general, features")
+        .eq("campaign_id", data.id);
+      if (primaryEvents && primaryEvents.length > 0) {
+        for (const ev of primaryEvents) {
+          const evGen = (ev.general as Record<string, unknown>) || {};
+          const evFeat = (ev.features as Record<string, unknown>) || {};
+          const evPatch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+          if (data.name !== undefined) evGen.title = data.name;
+          if (data.slogan !== undefined) evGen.theme = data.slogan;
+          if (data.banner_url !== undefined) evGen.banner_url = data.banner_url;
+          if (data.publish_status !== undefined) evPatch.publish_status = data.publish_status;
+          if (data.registration_status !== undefined) {
+            const isOpen = data.registration_status === "open";
+            evGen.registration_enabled = isOpen;
+            evFeat.registration = isOpen;
+          }
+          evPatch.general = evGen;
+          evPatch.features = evFeat;
+          await supabaseAdmin.from("events").update(evPatch as never).eq("id", ev.id);
+        }
+      }
+    } catch (evErr) {
+      console.warn("Linked events sync notice:", evErr);
+    }
+
     return { ok: true as const };
   });
 

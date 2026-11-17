@@ -172,7 +172,12 @@ export function EventIdCard({
     // 4. Event Title Section
     ctx.fillStyle = "#D97706";
     ctx.font = "bold 17px 'Noto Serif Gujarati', 'Noto Serif', serif";
-    ctx.fillText("“સેવા સંકલ્પ અભિયાન” અંતર્ગત", 60, 126);
+    const campaignHeading = card.campaign_name
+      ? `“${card.campaign_name}” અંતર્ગત`
+      : card.event_title?.toLowerCase().includes("sneh")
+        ? `“${card.event_title}” અંતર્ગત`
+        : "“સેવા સંકલ્પ અભિયાન” અંતર્ગત";
+    ctx.fillText(campaignHeading, 60, 126);
 
     ctx.fillStyle = "#0F3E3E";
     ctx.font = "bold 34px 'Noto Serif Gujarati', 'Noto Serif', serif";

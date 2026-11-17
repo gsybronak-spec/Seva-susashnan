@@ -97,6 +97,19 @@ function CampaignPage() {
 
   return (
     <div style={themeStyle(t)}>
+      {/* Prominent Campaign Banner (if uploaded/configured) */}
+      {campaign.banner_url && (
+        <div className="w-full bg-black/5 border-b border-border">
+          <div className="mx-auto max-w-5xl px-4 py-4 sm:py-6">
+            <img
+              src={campaign.banner_url}
+              alt={campaign.name}
+              className="w-full h-auto max-h-[380px] sm:max-h-[460px] object-cover rounded-xl sm:rounded-2xl shadow-md border border-border mx-auto"
+            />
+          </div>
+        </div>
+      )}
+
       {/* ---------- campaign hero (campaign identity only) ---------- */}
       <section
         className="relative overflow-hidden border-b border-border"
@@ -106,7 +119,7 @@ function CampaignPage() {
           <img
             src={campaign.banner_url}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover opacity-20"
+            className="absolute inset-0 h-full w-full object-cover opacity-15 mix-blend-overlay"
           />
         )}
         <div

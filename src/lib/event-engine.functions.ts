@@ -447,9 +447,19 @@ export const getEventIdCard = createServerFn({ method: "POST" })
     // Get event details
     const { data: eventRow } = await supabaseAdmin
       .from("events")
-      .select("id, event_date, event_time, venue, general")
+      .select("id, event_date, event_time, venue, general, campaign_id")
       .eq("id", eventId)
       .maybeSingle();
+
+    let campaignName: string | null = null;
+    if (eventRow?.campaign_id) {
+      const { data: cRow } = await supabaseAdmin
+        .from("campaigns")
+        .select("name")
+        .eq("id", eventRow.campaign_id)
+        .maybeSingle();
+      if (cRow?.name) campaignName = cRow.name;
+    }
 
     // Ensure event_id_cards record exists
     let { data: card } = await (supabaseAdmin.from("event_id_cards") as any)
@@ -526,6 +536,7 @@ export const getEventIdCard = createServerFn({ method: "POST" })
       participant_name: registration.full_name,
       mobile: registration.mobile,
       event_id: eventId,
+      campaign_name: campaignName,
       event_title: eventTitle,
       event_date: eventDate,
       event_time: eventTime,

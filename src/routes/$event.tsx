@@ -1,16 +1,33 @@
-import { createFileRoute, Outlet, notFound } from "@tanstack/react-router";
+import { createFileRoute, Outlet, notFound, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { BRAND } from "@/lib/brand";
 
-// Validate a public event slug AND require that it has a Published event.
-// Draft or Archived events must never render as a public microsite.
+// Validate a public event or campaign slug.
+// If the slug matches a published campaign (e.g. /snehmilan), redirect directly
+// to /campaigns/$slug so the user lands on the dedicated campaign portal.
 const resolveEventPublic = createServerFn({ method: "POST" })
   .inputValidator((i: unknown) =>
     z.object({ slug: z.string().trim().min(1).max(80).toLowerCase() }).parse(i),
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Direct campaign slug check (e.g. /snehmilan -> /campaigns/snehmilan)
+    const { data: camp } = await supabaseAdmin
+      .from("campaigns")
+      .select("id, slug, name, publish_status")
+      .eq("slug", data.slug)
+      .maybeSingle();
+    if (camp && camp.publish_status !== "archived") {
+      return {
+        ok: true as const,
+        isCampaign: true as const,
+        campaignSlug: camp.slug,
+        title: camp.name,
+      };
+    }
+
     const { data: bySlug } = await supabaseAdmin
       .from("events")
       .select("id, slug, district_id, district_name, district, general")
@@ -66,6 +83,14 @@ export const Route = createFileRoute("/$event")({
       location.pathname.endsWith("/scanner");
 
     const res = await resolveEventPublic({ data: { slug } });
+
+    if ((res as any)?.isCampaign && (res as any).campaignSlug) {
+      throw redirect({
+        to: "/campaigns/$slug",
+        params: { slug: (res as any).campaignSlug },
+      });
+    }
+
     if (!res.ok || !res.event) {
       if (isScannerRoute) {
         return {

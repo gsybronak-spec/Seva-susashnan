@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
@@ -23,6 +23,7 @@ export { RegistrationProgramHeader, RegistrationHeader } from "./registration-pr
 
 export function SiteHeader() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const load = useServerFn(getPublicSettings);
   const { data } = useQuery({
     queryKey: ["public-settings"],
@@ -31,6 +32,19 @@ export function SiteHeader() {
   });
   const certsEnabled = !!data?.certificates_enabled;
   const eventSlug = useCurrentEvent();
+
+  // Scoped Campaign Context:
+  // When inside a campaign (/campaigns/:slug), "Home", "Logo", and "Register" must stay
+  // strictly scoped to that campaign's main URL, never redirecting back to root generic home.
+  const campaignMatch = pathname ? pathname.match(/^\/campaigns\/([^/]+)/) : null;
+  const campaignSlug = campaignMatch && campaignMatch[1] !== "index" ? campaignMatch[1] : null;
+
+  const homeTarget = campaignSlug ? `/campaigns/${campaignSlug}` : "/";
+  const registerTarget = campaignSlug
+    ? `/campaigns/${campaignSlug}/register`
+    : eventSlug
+      ? `/${eventSlug}/register`
+      : "/campaigns";
 
   const navLinkClass =
     "rounded-md px-3 py-2 text-sm text-foreground transition hover:bg-muted hover:text-brand-primary";
@@ -42,7 +56,7 @@ export function SiteHeader() {
       <div className="brand-bar h-1.5 w-full" />
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:py-4">
         <Link
-          to="/"
+          to={homeTarget}
           onClick={() => setMobileMenuOpen(false)}
           className="flex items-center gap-3 sm:gap-4"
         >
@@ -61,7 +75,7 @@ export function SiteHeader() {
         {/* Desktop Navigation */}
         <nav className="hidden items-center gap-1 sm:flex">
           <Link
-            to="/"
+            to={homeTarget}
             className={navLinkClass}
             activeOptions={{ exact: true }}
             activeProps={{ className: navActiveClass }}
@@ -69,11 +83,11 @@ export function SiteHeader() {
             Home
           </Link>
           <Link
-            to="/campaigns"
+            to={campaignSlug ? `/campaigns/${campaignSlug}/register` : "/campaigns"}
             className={navLinkClass}
             activeProps={{ className: navActiveClass }}
           >
-            Events / Registration
+            {campaignSlug ? "Registration" : "Events / Registration"}
           </Link>
           <Link
             to="/idcard"
@@ -89,22 +103,12 @@ export function SiteHeader() {
           >
             Certificate
           </Link>
-          {eventSlug ? (
-            <Link
-              to="/$event/register"
-              params={{ event: eventSlug }}
-              className="ml-2 rounded-lg bg-brand-primary px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-            >
-              Register Now
-            </Link>
-          ) : (
-            <Link
-              to="/campaigns"
-              className="ml-2 rounded-lg bg-brand-primary px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-            >
-              Register
-            </Link>
-          )}
+          <Link
+            to={registerTarget}
+            className="ml-2 rounded-lg bg-brand-primary px-3.5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            Register Now
+          </Link>
         </nav>
 
         {/* Mobile menu button */}
@@ -124,7 +128,7 @@ export function SiteHeader() {
         <div className="border-t border-border bg-card px-4 py-3 sm:hidden">
           <nav className="flex flex-col space-y-1">
             <Link
-              to="/"
+              to={homeTarget}
               onClick={() => setMobileMenuOpen(false)}
               className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted"
             >
@@ -132,12 +136,12 @@ export function SiteHeader() {
               Home
             </Link>
             <Link
-              to="/campaigns"
+              to={campaignSlug ? `/campaigns/${campaignSlug}/register` : "/campaigns"}
               onClick={() => setMobileMenuOpen(false)}
               className="flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted"
             >
               <CalendarDays className="h-4 w-4 text-brand-primary" />
-              Events / Registration
+              {campaignSlug ? "Registration" : "Events / Registration"}
             </Link>
             <Link
               to="/idcard"
@@ -156,24 +160,13 @@ export function SiteHeader() {
               Participation Certificate
             </Link>
             <div className="pt-2">
-              {eventSlug ? (
-                <Link
-                  to="/$event/register"
-                  params={{ event: eventSlug }}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex w-full items-center justify-center rounded-lg bg-brand-primary py-2.5 text-center text-sm font-semibold text-white"
-                >
-                  Register for Shibir
-                </Link>
-              ) : (
-                <Link
-                  to="/campaigns"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="flex w-full items-center justify-center rounded-lg bg-brand-primary py-2.5 text-center text-sm font-semibold text-white"
-                >
-                  Explore &amp; Register
-                </Link>
-              )}
+              <Link
+                to={registerTarget}
+                onClick={() => setMobileMenuOpen(false)}
+                className="flex w-full items-center justify-center rounded-lg bg-brand-primary py-2.5 text-center text-sm font-semibold text-white"
+              >
+                Register Now
+              </Link>
             </div>
           </nav>
         </div>

@@ -65,8 +65,8 @@ const EMPTY_FORM: FormState = {
   backgroundColor: "#FFF7F2",
   textColor: "#2B1B1B",
   buttonColor: "#9F3138",
-  publish_status: "draft",
-  registration_status: "closed",
+  publish_status: "published",
+  registration_status: "open",
 };
 
 function slugify(s: string): string {
@@ -81,6 +81,64 @@ const COLOR_FIELDS: Array<{ key: keyof FormState; label: string }> = [
   { key: "textColor", label: "Text Color" },
   { key: "buttonColor", label: "Button Color" },
 ];
+
+/** Client-side image compression: prevents payload limits and handles standard phone camera photos (6MB-15MB) effortlessly. */
+async function compressImageFile(
+  file: File,
+  maxDim = 1920,
+  quality = 0.85
+): Promise<{ dataBase64: string; contentType: string; fileName: string }> {
+  if (file.type === "image/svg+xml") {
+    const buf = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    return { dataBase64: btoa(binary), contentType: file.type, fileName: file.name };
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read image file"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Failed to load image"));
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas context not available"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        const base64 = dataUrl.split(",")[1];
+        const safeBaseName = file.name.replace(/\.[^/.]+$/, "") + ".jpg";
+        resolve({
+          dataBase64: base64,
+          contentType: "image/jpeg",
+          fileName: safeBaseName,
+        });
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 /** Direct image upload → `campaign-media` storage bucket (primary path).
  * URL entry remains as a secondary option for externally-hosted assets. */
@@ -97,27 +155,19 @@ function ImageUploadField({
   async function handleFile(file: File) {
     setBusy(true);
     try {
-      const buf = await file.arrayBuffer();
-      let binary = "";
-      const bytes = new Uint8Array(buf);
-      for (let i = 0; i < bytes.length; i += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-      }
+      const compressed = await compressImageFile(file);
       const res = await uploadFn({
-        data: {
-          fileName: file.name,
-          contentType: file.type || "image/png",
-          dataBase64: btoa(binary),
-        },
+        data: compressed,
       });
       if (!res.ok) {
         toast.error(res.error);
         return;
       }
       onChange(res.url);
-      toast.success("Image uploaded");
-    } catch {
-      toast.error("Upload failed. Please try again.");
+      toast.success("Image uploaded successfully");
+    } catch (err) {
+      console.error("Upload error:", err);
+      toast.error("Upload failed. Please try again or paste image URL.");
     } finally {
       setBusy(false);
     }
@@ -128,7 +178,17 @@ function ImageUploadField({
       <Label>{label}</Label>
       <div className="flex items-center gap-2">
         {value ? (
-          <img src={value} alt="" className="h-9 w-9 rounded border border-border bg-white object-contain p-0.5" />
+          <div className="relative group">
+            <img src={value} alt="" className="h-10 w-10 rounded border border-border bg-white object-contain p-0.5" />
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-[10px] opacity-80 hover:opacity-100"
+              title="Remove image"
+            >
+              ×
+            </button>
+          </div>
         ) : null}
         <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-3 py-2 text-sm font-medium text-brand-primary hover:bg-muted">
           <Upload className="h-4 w-4" />
@@ -269,11 +329,11 @@ function CampaignForm({ initial, onDone }: { initial: FormState; onDone: () => v
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Campaign Name *</Label>
-            <Input value={f.name} onChange={(e) => { set("name", e.target.value); if (!f.id && !f.slug) set("slug", slugify(e.target.value)); }} placeholder="e.g. Seva Sushasan Abhiyan" maxLength={160} />
+            <Input value={f.name} onChange={(e) => { set("name", e.target.value); if (!f.id && !f.slug) set("slug", slugify(e.target.value)); }} placeholder="e.g. Yog Sneh Milan 2026" maxLength={160} />
           </div>
           <div className="space-y-1.5">
             <Label>Campaign Slug * (URL)</Label>
-            <Input value={f.slug} onChange={(e) => set("slug", slugify(e.target.value))} placeholder="seva-sushasan-abhiyan" maxLength={80} />
+            <Input value={f.slug} onChange={(e) => set("slug", slugify(e.target.value))} placeholder="yog-sneh-milan-2026" maxLength={80} />
           </div>
           <div className="space-y-1.5">
             <Label>Slogan / Tagline</Label>
