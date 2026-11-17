@@ -146,16 +146,10 @@ export function SuccessView({
           </h3>
           <ul className="text-xs text-[#2D4A3E] space-y-2 leading-relaxed">
             {isSnehMilan ? (
-              <>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-[#D97706]">•</span>
-                  <span><strong>નોંધણી ક્રમાંક સાચવો:</strong> આપનો નોંધણી ક્રમાંક ({reg}) સાચવી રાખશો અને કાર્યક્રમમાં ઉપસ્થિતિ સમયે સાથે રાખવો.</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="font-bold text-[#D97706]">•</span>
-                  <span><strong>સમયસર પહોંચો:</strong> કાર્યક્રમ શરૂ થવાના ૧૫ મિનિટ પહેલા નિર્ધારિત સ્થળ પર પહોંચવું અનિવાર્ય છે.</span>
-                </li>
-              </>
+              <li className="flex items-start gap-2">
+                <span className="font-bold text-[#D97706]">•</span>
+                <span><strong>નોંધણી ક્રમાંક સાચવો:</strong> આપનો નોંધણી ક્રમાંક ({reg}) સાચવી રાખશો અને કાર્યક્રમમાં ઉપસ્થિતિ સમયે સાથે રાખવો.</span>
+              </li>
             ) : (
               <>
                 <li className="flex items-start gap-2">

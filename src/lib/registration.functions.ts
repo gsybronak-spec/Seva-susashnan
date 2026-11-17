@@ -1526,7 +1526,7 @@ export const adminToggleCertificate = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z
       .object({
-        registration_number: z.string().min(6).max(40).regex(/^[A-Z0-9]{2,10}\d{4,}$/),
+        registration_number: z.string().min(6).max(40).regex(/^[A-Z0-9_-]{2,15}\d{1,8}$/i),
         available: z.boolean(),
         // Event ID must be provided to ensure we don't accidentally toggle a
         // registration number collision from a different event.
