@@ -57,14 +57,17 @@ import {
   AlertCircle,
   ArrowLeft,
   Award,
+  CalendarDays,
   Download,
   KeyRound,
   LayoutGrid,
   LogOut,
+  Megaphone,
   QrCode,
   RefreshCcw,
   Search,
   Shield,
+  Sparkles,
   Trophy,
   Users,
 } from "lucide-react";
@@ -480,9 +483,8 @@ function Dashboard({
   };
   const eventIdArg = selectedEventId || undefined;
 
-  // Overview vs Workspace mode. Admin lands on the Event Overview page and
-  // opens a specific event's workspace by clicking a card.
-  const [view, setView] = useState<"overview" | "workspace">("overview");
+  // Admin modes: campaigns (default), events (standalone shibirs), workspace (settings/management)
+  const [adminMode, setAdminMode] = useState<"campaigns" | "events" | "workspace">("campaigns");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   // Controlled workspace tab + initial Event Settings subtab, so "Edit /
@@ -505,16 +507,16 @@ function Dashboard({
       setWorkspaceTab("event");
       setSettingsTab(action === "form" ? "form" : "status");
     }
-    setView("workspace");
+    setAdminMode("workspace");
   }
   function openWorkspace(id: string) {
     if (!id) {
       setPickerOpen(true);
-      setView("workspace");
+      setAdminMode("workspace");
       return;
     }
     setSelectedEventId(id);
-    setView("workspace");
+    setAdminMode("workspace");
   }
 
 
@@ -561,8 +563,8 @@ function Dashboard({
 
   // Auto-open the mandatory picker whenever the workspace is active but no event has been chosen.
   useEffect(() => {
-    if (view === "workspace" && !selectedEventId) setPickerOpen(true);
-  }, [view, selectedEventId]);
+    if (adminMode === "workspace" && !selectedEventId) setPickerOpen(true);
+  }, [adminMode, selectedEventId]);
 
   const { data, isFetching, refetch } = useQuery({
     queryKey: ["admin-list", applied, eventIdArg ?? "all"],
@@ -812,19 +814,56 @@ function Dashboard({
             Signed in as <span className="font-semibold text-foreground">{check.username}</span>
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {view === "workspace" && (
-            <Button variant="outline" onClick={() => setView("overview")}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Overview
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Top-level Admin Mode Switcher */}
+          <div className="flex items-center gap-1 rounded-xl border border-border bg-muted/60 p-1">
+            <Button
+              size="sm"
+              variant={adminMode === "campaigns" ? "default" : "ghost"}
+              className={
+                adminMode === "campaigns"
+                  ? "bg-[#0F3E3E] text-white font-semibold shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }
+              onClick={() => {
+                setAdminMode("campaigns");
+              }}
+            >
+              <Megaphone className="mr-1.5 h-4 w-4" />
+              Campaigns (અભિયાનો)
             </Button>
-          )}
-          {view === "overview" && (
-            <Button variant="outline" onClick={() => setView("workspace")}>
-              <LayoutGrid className="mr-2 h-4 w-4" />
-              Open Workspace
+            <Button
+              size="sm"
+              variant={adminMode === "events" ? "default" : "ghost"}
+              className={
+                adminMode === "events"
+                  ? "bg-[#0F3E3E] text-white font-semibold shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }
+              onClick={() => {
+                setAdminMode("events");
+              }}
+            >
+              <CalendarDays className="mr-1.5 h-4 w-4" />
+              Standalone Events (શિબિરો)
             </Button>
-          )}
+            <Button
+              size="sm"
+              variant={adminMode === "workspace" ? "default" : "ghost"}
+              className={
+                adminMode === "workspace"
+                  ? "bg-[#0F3E3E] text-white font-semibold shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }
+              onClick={() => {
+                setAdminMode("workspace");
+              }}
+            >
+              <LayoutGrid className="mr-1.5 h-4 w-4" />
+              Workspace (સેટિંગ્સ)
+            </Button>
+          </div>
+
           {selectedEventSlug ? (
             <Button
               asChild
@@ -842,7 +881,10 @@ function Dashboard({
           ) : (
             <Button
               variant="outline"
-              onClick={() => setWorkspaceTab("checkin")}
+              onClick={() => {
+                setWorkspaceTab("checkin");
+                setAdminMode("workspace");
+              }}
               className="border-[#0F3E3E] text-[#0F3E3E] hover:bg-[#0F3E3E] hover:text-white font-semibold shadow-xs"
             >
               <QrCode className="mr-2 h-4 w-4 text-[#F59E0B]" />
@@ -864,7 +906,7 @@ function Dashboard({
             <RefreshCcw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
-          {isSuper && (
+          {isSuper && adminMode === "workspace" && (
             <Button onClick={exportCSV} disabled={!rows.length || isExporting}>
               <Download className="mr-2 h-4 w-4" />
               {isExporting ? "Exporting..." : "Export Excel"}
@@ -883,13 +925,43 @@ function Dashboard({
         </div>
       </div>
 
-      {view === "overview" && (
+      {adminMode === "campaigns" && (
+        <Suspense fallback={<TabFallback />}>
+          {selectedCampaignDashboardId ? (
+            <CampaignDashboard
+              campaignId={selectedCampaignDashboardId}
+              onBack={() => setSelectedCampaignDashboardId(null)}
+              onManageEvent={(eventId, act) => {
+                openEventFor(eventId, act || "settings");
+              }}
+            />
+          ) : (
+            <CampaignsManager
+              onOpenDashboard={(campaignId) => setSelectedCampaignDashboardId(campaignId)}
+              onOpenEvents={(campaignId) => {
+                setSelectedCampaignDashboardId(campaignId);
+              }}
+              onOpenParticipants={(campaignId) => {
+                setSelectedCampaignDashboardId(campaignId);
+              }}
+              onOpenCheckin={(campaignId) => {
+                setSelectedCampaignDashboardId(campaignId);
+              }}
+              onOpenCertificates={(campaignId) => {
+                setSelectedCampaignDashboardId(campaignId);
+              }}
+            />
+          )}
+        </Suspense>
+      )}
+
+      {adminMode === "events" && (
         <Suspense fallback={<TabFallback />}>
           <EventOverview isSuper={isSuper} onOpen={openWorkspace} />
         </Suspense>
       )}
 
-      {view === "workspace" && (
+      {adminMode === "workspace" && (
       <>
       <EventPickerDialog
         open={pickerOpen}

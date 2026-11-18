@@ -225,6 +225,7 @@ export const adminCreateEvent = createServerFn({ method: "POST" })
             district_ids: z.array(z.string().uuid()).max(100).optional().nullable(),
           })
           .optional(),
+        campaign_id: z.string().uuid().optional(),
       })
       .parse(input),
   )
@@ -326,6 +327,7 @@ export const adminCreateEvent = createServerFn({ method: "POST" })
       district: data.district ?? null,
       district_id: data.district_id ?? null,
       district_name: data.district_name ?? data.district ?? null,
+      campaign_id: data.campaign_id ?? null,
       type: data.type ?? "district",
       description: data.description ?? null,
       event_date: data.event_date || null,

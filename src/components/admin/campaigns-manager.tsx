@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   Megaphone, Plus, Pencil, Copy, Archive, Trash2, ExternalLink, Upload,
-  CalendarDays, Users, UserCheck, Award, LayoutDashboard,
+  CalendarDays, Users, UserCheck, Award, LayoutDashboard, ArrowRight, Sparkles, CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -546,125 +546,242 @@ export function CampaignsManager({
           No campaigns yet. Create the first one.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-card">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-3">Campaign</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Registration</th>
-                <th className="px-4 py-3">Slug</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {campaigns.map((c) => (
-                <tr key={c.id} className="border-b border-border/60 last:border-0">
-                  <td className="px-4 py-3">
-                    <div
-                      className="font-semibold text-foreground hover:text-brand-primary cursor-pointer transition-colors"
-                      onClick={() => onOpenDashboard?.(c.id)}
-                    >
-                      {c.name}
-                    </div>
-                    {c.slogan && <div className="text-xs text-muted-foreground">{c.slogan}</div>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={
-                        c.publish_status === "published"
-                          ? "rounded-full bg-brand-success/10 px-2 py-0.5 text-xs font-medium text-brand-success"
-                          : c.publish_status === "draft"
-                            ? "rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
-                            : "rounded-full bg-brand-accent/10 px-2 py-0.5 text-xs font-medium text-brand-accent"
-                      }
-                    >
-                      {c.publish_status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-xs">
-                    {c.registration_status === "open" ? (
-                      <span className="font-medium text-brand-success">Open</span>
-                    ) : (
-                      <span className="text-muted-foreground">Closed</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{c.slug}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {onOpenDashboard && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-8 px-2 text-xs font-semibold bg-primary/5 hover:bg-primary/10 text-primary border-primary/20 gap-1"
-                          title="Open Campaign Dashboard"
-                          onClick={() => onOpenDashboard(c.id)}
+        <div className="space-y-6">
+          {/* Active Campaigns Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {campaigns.map((c) => {
+              const isPublished = c.publish_status === "published";
+              const isOpen = c.registration_status === "open";
+              return (
+                <div
+                  key={c.id}
+                  className="rounded-2xl border-2 border-border/80 hover:border-brand-primary/50 bg-card p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            isPublished
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-muted text-muted-foreground"
+                          }`}
                         >
-                          <LayoutDashboard className="h-3.5 w-3.5" />
-                          Dashboard
-                        </Button>
-                      )}
+                          {isPublished ? "ચાલુ છે (Published)" : c.publish_status}
+                        </span>
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            isOpen
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : "bg-red-50 text-red-700 border border-red-200"
+                          }`}
+                        >
+                          {isOpen ? "નોંધણી ચાલુ (Reg Open)" : "નોંધણી બંધ (Closed)"}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono text-muted-foreground">/{c.slug}</span>
+                    </div>
+
+                    <div>
+                      <h3
+                        className="text-lg font-bold text-foreground hover:text-brand-primary cursor-pointer transition-colors"
+                        onClick={() => onOpenDashboard?.(c.id)}
+                      >
+                        {c.name}
+                      </h3>
+                      {c.slogan && <p className="text-xs text-muted-foreground mt-0.5">{c.slogan}</p>}
+                    </div>
+
+                    {/* Quick Stats Grid */}
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <div className="rounded-xl bg-muted/40 p-2.5 border border-border/60">
+                        <span className="text-[11px] font-medium text-muted-foreground block">
+                          Campaign Events / સત્રો
+                        </span>
+                        <span className="text-base font-bold text-foreground flex items-center gap-1">
+                          <CalendarDays className="h-4 w-4 text-brand-primary" />
+                          {c.event_count || 0} Events
+                        </span>
+                      </div>
+                      <div className="rounded-xl bg-muted/40 p-2.5 border border-border/60">
+                        <span className="text-[11px] font-medium text-muted-foreground block">
+                          Total Registrations
+                        </span>
+                        <span className="text-base font-bold text-brand-primary flex items-center gap-1">
+                          <Users className="h-4 w-4 text-brand-primary" />
+                          {c.registration_count?.toLocaleString("en-IN") || 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 mt-3 border-t border-border flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1">
                       <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit campaign">
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-4 w-4 mr-1" />
+                        Edit
                       </Button>
                       {c.publish_status !== "archived" && (
                         <Link to="/campaigns/$slug" params={{ slug: c.slug }} target="_blank">
                           <Button size="sm" variant="ghost" title="View public campaign page">
-                            <ExternalLink className="h-4 w-4" />
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            Page
                           </Button>
                         </Link>
                       )}
-                      {onOpenEvents && (
-                        <Button size="sm" variant="ghost" title="Events under this campaign" onClick={() => onOpenEvents(c.id)}>
-                          <CalendarDays className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {onOpenParticipants && (
-                        <Button size="sm" variant="ghost" title="Participants (registrations)" onClick={() => onOpenParticipants(c.id)}>
-                          <Users className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {onOpenCheckin && (
-                        <Button size="sm" variant="ghost" title="Check-In / Attendance" onClick={() => onOpenCheckin(c.id)}>
-                          <UserCheck className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {onOpenCertificates && (
-                        <Button size="sm" variant="ghost" title="Certificates" onClick={() => onOpenCertificates(c.id)}>
-                          <Award className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button
-                        size="sm" variant="ghost" title="Duplicate campaign"
-                        onClick={() => dup.mutate(c.id)} disabled={dup.isPending}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      {c.publish_status !== "archived" && (
-                        <Button
-                          size="sm" variant="ghost" title="Archive campaign"
-                          onClick={() => { if (confirm(`Archive "${c.name}"?`)) archive.mutate(c.id); }}
-                          disabled={archive.isPending}
-                        >
-                          <Archive className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <Button
-                        size="sm" variant="ghost" title="Delete (only when empty)"
-                        onClick={() => {
-                          if (confirm(`Delete "${c.name}"? Only campaigns with no events or registrations can be deleted.`))
-                            del.mutate(c.id);
-                        }}
-                        disabled={del.isPending}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
                     </div>
-                  </td>
+
+                    {onOpenDashboard && (
+                      <Button
+                        size="sm"
+                        onClick={() => onOpenDashboard(c.id)}
+                        className="bg-[#0F3E3E] hover:bg-[#154E4E] text-white font-semibold shadow-xs"
+                      >
+                        <LayoutDashboard className="h-4 w-4 mr-1.5" />
+                        અભિયાન ડેશબોર્ડ ખોલો
+                        <ArrowRight className="h-4 w-4 ml-1" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Detailed Campaigns Table */}
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <div className="px-4 py-3 border-b border-border bg-muted/20">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                All Campaigns Management Table
+              </h4>
+            </div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="px-4 py-3">Campaign</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Registration</th>
+                  <th className="px-4 py-3">Events</th>
+                  <th className="px-4 py-3">Registrations</th>
+                  <th className="px-4 py-3">Slug</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {campaigns.map((c) => (
+                  <tr key={c.id} className="border-b border-border/60 last:border-0 hover:bg-muted/10">
+                    <td className="px-4 py-3">
+                      <div
+                        className="font-semibold text-foreground hover:text-brand-primary cursor-pointer transition-colors"
+                        onClick={() => onOpenDashboard?.(c.id)}
+                      >
+                        {c.name}
+                      </div>
+                      {c.slogan && <div className="text-xs text-muted-foreground">{c.slogan}</div>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={
+                          c.publish_status === "published"
+                            ? "rounded-full bg-brand-success/10 px-2 py-0.5 text-xs font-medium text-brand-success"
+                            : c.publish_status === "draft"
+                              ? "rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+                              : "rounded-full bg-brand-accent/10 px-2 py-0.5 text-xs font-medium text-brand-accent"
+                        }
+                      >
+                        {c.publish_status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {c.registration_status === "open" ? (
+                        <span className="font-medium text-brand-success">Open</span>
+                      ) : (
+                        <span className="text-muted-foreground">Closed</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-semibold">
+                      {c.event_count || 0}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-bold text-brand-primary">
+                      {c.registration_count?.toLocaleString("en-IN") || 0}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{c.slug}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {onOpenDashboard && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 px-2 text-xs font-semibold bg-primary/5 hover:bg-primary/10 text-primary border-primary/20 gap-1"
+                            title="Open Campaign Dashboard"
+                            onClick={() => onOpenDashboard(c.id)}
+                          >
+                            <LayoutDashboard className="h-3.5 w-3.5" />
+                            Dashboard
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit campaign">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        {c.publish_status !== "archived" && (
+                          <Link to="/campaigns/$slug" params={{ slug: c.slug }} target="_blank">
+                            <Button size="sm" variant="ghost" title="View public campaign page">
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        )}
+                        {onOpenEvents && (
+                          <Button size="sm" variant="ghost" title="Events under this campaign" onClick={() => onOpenEvents(c.id)}>
+                            <CalendarDays className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onOpenParticipants && (
+                          <Button size="sm" variant="ghost" title="Participants (registrations)" onClick={() => onOpenParticipants(c.id)}>
+                            <Users className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onOpenCheckin && (
+                          <Button size="sm" variant="ghost" title="Check-In / Attendance" onClick={() => onOpenCheckin(c.id)}>
+                            <UserCheck className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {onOpenCertificates && (
+                          <Button size="sm" variant="ghost" title="Certificates" onClick={() => onOpenCertificates(c.id)}>
+                            <Award className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          size="sm" variant="ghost" title="Duplicate campaign"
+                          onClick={() => dup.mutate(c.id)} disabled={dup.isPending}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                        {c.publish_status !== "archived" && (
+                          <Button
+                            size="sm" variant="ghost" title="Archive campaign"
+                            onClick={() => { if (confirm(`Archive "${c.name}"?`)) archive.mutate(c.id); }}
+                            disabled={archive.isPending}
+                          >
+                            <Archive className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          size="sm" variant="ghost" title="Delete (only when empty)"
+                          onClick={() => {
+                            if (confirm(`Delete "${c.name}"? Only campaigns with no events or registrations can be deleted.`))
+                              del.mutate(c.id);
+                          }}
+                          disabled={del.isPending}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

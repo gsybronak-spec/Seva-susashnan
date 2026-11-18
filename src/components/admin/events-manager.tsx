@@ -383,6 +383,7 @@ export function EventsManager({
           template_from: templateFrom || undefined,
           is_template: isTemplate || undefined,
           template_category: isTemplate && templateCategory.trim() ? templateCategory.trim() : undefined,
+          campaign_id: campaignFilterId || undefined,
           activate: false,
         },
       });

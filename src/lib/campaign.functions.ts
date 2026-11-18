@@ -36,6 +36,8 @@ export type Campaign = {
   publish_status: "draft" | "published" | "archived";
   registration_status: "open" | "closed";
   seo_title: string | null;
+  event_count?: number;
+  registration_count?: number;
   created_at: string;
   updated_at: string;
 };
@@ -169,7 +171,30 @@ export const adminListCampaigns = createServerFn({ method: "GET" }).handler(asyn
     .select(CAMPAIGN_COLUMNS)
     .order("created_at", { ascending: true });
   if (error) return { ok: false as const, error: error.message, campaigns: [] as Campaign[] };
-  return { ok: true as const, campaigns: ((data ?? []) as unknown as Campaign[]) };
+
+  const rawList = (data ?? []) as unknown as Campaign[];
+  const enriched = await Promise.all(
+    rawList.map(async (c) => {
+      const [{ count: evCount }, { count: regCount }] = await Promise.all([
+        supabaseAdmin
+          .from("events")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", c.id)
+          .neq("publish_status", "archived"),
+        supabaseAdmin
+          .from("registrations")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", c.id),
+      ]);
+      return {
+        ...c,
+        event_count: evCount ?? 0,
+        registration_count: regCount ?? 0,
+      };
+    })
+  );
+
+  return { ok: true as const, campaigns: enriched };
 });
 
 // ---------------- Admin: create campaign ----------------
@@ -1026,4 +1051,319 @@ export const loadCampaignZoneRegistrationData = createServerFn({ method: "POST" 
       console.warn("[loadCampaignZoneRegistrationData] error:", err);
       return { ok: false as const, error: "Could not load the zone registration form. Please try again." };
     }
+  });
+
+// ---------------- Admin: Get All Events for a Specific Campaign ----------------
+export const adminGetCampaignEvents = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ campaignId: z.string().uuid() }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: events, error } = await supabaseAdmin
+      .from("events")
+      .select("id, slug, district, district_name, general, features, form, publish_status, lifecycle_status, registration_open_at, registration_close_at, max_registrations, event_date, event_time, venue, created_at, updated_at")
+      .eq("campaign_id", data.campaignId)
+      .order("created_at", { ascending: false });
+
+    if (error) return { ok: false as const, error: error.message };
+
+    // Fetch registration count for each event
+    const withCounts = await Promise.all(
+      (events ?? []).map(async (ev) => {
+        const { count } = await supabaseAdmin
+          .from("registrations")
+          .select("id", { count: "exact", head: true })
+          .eq("event_id", ev.id);
+        return {
+          ...ev,
+          registration_count: count ?? 0,
+        };
+      })
+    );
+
+    return { ok: true as const, events: withCounts };
+  });
+
+// ---------------- Admin: Add a New Independent Event under a Campaign ----------------
+export const adminAddEventToCampaign = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      campaignId: z.string().uuid(),
+      title: z.string().trim().min(2).max(200),
+      slug: z.string().trim().max(80).optional(),
+      event_date: z.string().trim().optional(),
+      start_time: z.string().trim().optional(),
+      end_time: z.string().trim().optional(),
+      venue: z.string().trim().max(300).optional(),
+      description: z.string().trim().max(2000).optional(),
+      reg_prefix: z.string().trim().max(10).optional(),
+      publish_status: z.enum(["published", "draft"]).default("published"),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: campaign } = await supabaseAdmin
+      .from("campaigns")
+      .select("id, slug, name, slogan, banner_url, theme, publish_status, registration_status")
+      .eq("id", data.campaignId)
+      .maybeSingle();
+
+    if (!campaign) return { ok: false as const, error: "Campaign not found" };
+
+    const safeSlugify = (s: string) =>
+      s
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "session";
+
+    const cleanBase = data.slug ? safeSlugify(data.slug) : safeSlugify(`${campaign.slug}-${data.title}`);
+    let uniqueSlug = cleanBase;
+    let i = 1;
+    while (true) {
+      const { data: exists } = await supabaseAdmin
+        .from("events")
+        .select("id")
+        .eq("slug", uniqueSlug)
+        .maybeSingle();
+      if (!exists) break;
+      i++;
+      uniqueSlug = `${cleanBase}-${i}`;
+    }
+
+    const isSneh = isYogSnehMilanCampaign({
+      campaignSlug: campaign.slug,
+      campaignName: campaign.name,
+    });
+
+    const prefix = data.reg_prefix || (isSneh ? "YSM2026" : (campaign.slug.slice(0, 4).toUpperCase().replace(/[^A-Z]/g, "") || "EVT"));
+    const timeDisplay = data.start_time
+      ? data.end_time
+        ? `${data.start_time} - ${data.end_time}`
+        : data.start_time
+      : null;
+
+    const { data: newEvent, error } = await supabaseAdmin
+      .from("events")
+      .insert({
+        campaign_id: campaign.id,
+        slug: uniqueSlug,
+        type: "state",
+        district: data.venue || "Gujarat",
+        district_name: data.venue || "Gujarat",
+        publish_status: data.publish_status,
+        lifecycle_status: "upcoming",
+        is_active: data.publish_status === "published",
+        reg_prefix: prefix,
+        event_date: data.event_date || null,
+        event_time: timeDisplay,
+        venue: data.venue || null,
+        description: data.description || null,
+        general: {
+          title: data.title,
+          subtitle: isSneh ? YOG_SNEH_MILAN_BRANDING.line2 : campaign.slogan || "Gujarat State Yog Board",
+          theme: data.title,
+          description: data.description || `${data.title} under ${campaign.name}`,
+          banner_url: campaign.banner_url || "",
+          registration_enabled: true,
+          registration_mode: "online",
+          level: "State",
+          coverage: { type: "state" },
+        },
+        features: {
+          registration: true,
+          attendance: true,
+          certificate: true,
+          referral: true,
+          footer: true,
+        },
+        form: {
+          version: 2,
+          fields: [
+            {
+              key: "full_name",
+              type: "text",
+              label: "Full Name / પૂરું નામ",
+              order: 1,
+              hidden: false,
+              unique: false,
+              builtin: true,
+              enabled: true,
+              options: [],
+              readonly: false,
+              required: true,
+              validation: { min: 2, max: 120 },
+              placeholder: "ENTER YOUR FULL NAME",
+              help: "Enter your official name as it should appear on your ID card.",
+              default_value: "",
+            },
+            {
+              key: "mobile",
+              type: "phone",
+              label: "Mobile Number / મોબાઈલ નંબર",
+              order: 2,
+              hidden: false,
+              unique: true,
+              builtin: true,
+              enabled: true,
+              options: [],
+              readonly: false,
+              required: true,
+              validation: { pattern: "^[6-9]\\d{9}$", message: "Enter a valid 10-digit Indian mobile number" },
+              placeholder: "9876543210",
+              help: "10-digit Indian mobile number.",
+              default_value: "",
+            },
+            {
+              key: "gender",
+              type: "radio",
+              label: "Gender / જાતિ",
+              order: 3,
+              hidden: false,
+              unique: false,
+              builtin: true,
+              enabled: true,
+              options: [
+                { label: "Male / પુરુષ", value: "Male" },
+                { label: "Female / મહિલા", value: "Female" },
+              ],
+              readonly: false,
+              required: true,
+              validation: {},
+              help: "Select your gender.",
+              default_value: "",
+            },
+            {
+              key: "district",
+              type: "dropdown",
+              label: "District / જિલ્લો",
+              order: 4,
+              hidden: false,
+              unique: false,
+              builtin: true,
+              enabled: true,
+              options: [],
+              readonly: false,
+              required: true,
+              validation: {},
+              placeholder: "Select District",
+              help: "Please select your district.",
+              default_value: "",
+            },
+          ],
+        },
+      })
+      .select("id, slug, general")
+      .single();
+
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const, event: newEvent };
+  });
+
+// ---------------- Admin: Delete / Archive Event from Campaign ----------------
+export const adminDeleteCampaignEvent = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      eventId: z.string().uuid(),
+      campaignId: z.string().uuid(),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Check if event has registrations
+    const { count } = await supabaseAdmin
+      .from("registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("event_id", data.eventId);
+
+    if ((count ?? 0) > 0) {
+      // Archive instead of hard delete to avoid corrupting participant data
+      const { error: archErr } = await supabaseAdmin
+        .from("events")
+        .update({
+          publish_status: "archived",
+          lifecycle_status: "archived",
+          is_active: false,
+          archived_at: new Date().toISOString(),
+        })
+        .eq("id", data.eventId)
+        .eq("campaign_id", data.campaignId);
+
+      if (archErr) return { ok: false as const, error: archErr.message };
+      return { ok: true as const, archived: true, message: `Event has ${count} existing registrations, so it was safely archived.` };
+    }
+
+    const { error } = await supabaseAdmin
+      .from("events")
+      .delete()
+      .eq("id", data.eventId)
+      .eq("campaign_id", data.campaignId);
+
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const, archived: false, message: "Event deleted successfully." };
+  });
+
+// ---------------- Admin: Update Event under Campaign ----------------
+export const adminUpdateCampaignEvent = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      eventId: z.string().uuid(),
+      campaignId: z.string().uuid(),
+      title: z.string().min(2),
+      slug: z.string().min(2),
+      event_date: z.string().optional(),
+      start_time: z.string().optional(),
+      end_time: z.string().optional(),
+      venue: z.string().optional(),
+      description: z.string().optional(),
+      publish_status: z.enum(["draft", "published", "archived"]).default("published"),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Fetch existing event under this campaign
+    const { data: existing, error: fetchErr } = await supabaseAdmin
+      .from("events")
+      .select("id, general, slug")
+      .eq("id", data.eventId)
+      .eq("campaign_id", data.campaignId)
+      .single();
+
+    if (fetchErr || !existing) {
+      return { ok: false as const, error: "Event not found under this campaign." };
+    }
+
+    const timeDisplay = data.start_time && data.end_time
+      ? `${data.start_time} - ${data.end_time}`
+      : data.start_time || "";
+
+    const general = (existing.general || {}) as Record<string, any>;
+    general.title = data.title;
+    if (data.description) general.description = data.description;
+
+    const { error: updErr } = await supabaseAdmin
+      .from("events")
+      .update({
+        event_date: data.event_date || null,
+        event_time: timeDisplay,
+        venue: data.venue || null,
+        description: data.description || null,
+        publish_status: data.publish_status,
+        is_active: data.publish_status === "published",
+        general,
+      })
+      .eq("id", data.eventId)
+      .eq("campaign_id", data.campaignId);
+
+    if (updErr) return { ok: false as const, error: updErr.message };
+    return { ok: true as const, message: "Event updated successfully." };
   });
