@@ -673,11 +673,13 @@ export const adminGetCampaignDashboard = createServerFn({ method: "POST" })
       ok: true as const,
       campaign: campaign as unknown as Campaign,
       primaryEvent,
+      zones: zoneCounts,
       stats: {
         totalRegistrations: totalRegistrations ?? 0,
         todayRegistrations: todayRegistrations ?? 0,
         zoneStats: zoneCounts,
         unassignedCount: unassignedCount ?? 0,
+        activeZonesCount: zoneCounts.filter((z) => z.is_active).length,
       },
     };
   });
@@ -1148,6 +1150,20 @@ export const adminAddEventToCampaign = createServerFn({ method: "POST" })
         : data.start_time
       : null;
 
+    const parseSafeTime = (t?: string | null): string | null => {
+      if (!t) return null;
+      const m = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?/i);
+      if (!m) return null;
+      let hr = parseInt(m[1], 10);
+      const min = m[2];
+      const sec = m[3] || "00";
+      const ampm = m[4]?.toLowerCase();
+      if (ampm === "pm" && hr < 12) hr += 12;
+      if (ampm === "am" && hr === 12) hr = 0;
+      return `${String(hr).padStart(2, "0")}:${min}:${sec}`;
+    };
+    const safeTime = parseSafeTime(data.start_time);
+
     const { data: newEvent, error } = await supabaseAdmin
       .from("events")
       .insert({
@@ -1161,7 +1177,7 @@ export const adminAddEventToCampaign = createServerFn({ method: "POST" })
         is_active: data.publish_status === "published",
         reg_prefix: prefix,
         event_date: data.event_date || null,
-        event_time: timeDisplay,
+        event_time: safeTime,
         venue: data.venue || null,
         description: data.description || null,
         general: {
@@ -1170,6 +1186,11 @@ export const adminAddEventToCampaign = createServerFn({ method: "POST" })
           theme: data.title,
           description: data.description || `${data.title} under ${campaign.name}`,
           banner_url: campaign.banner_url || "",
+          event_date: data.event_date || null,
+          event_time: timeDisplay || null,
+          start_time: data.start_time || null,
+          end_time: data.end_time || null,
+          venue: data.venue || null,
           registration_enabled: true,
           registration_mode: "online",
           level: "State",
@@ -1346,15 +1367,34 @@ export const adminUpdateCampaignEvent = createServerFn({ method: "POST" })
       ? `${data.start_time} - ${data.end_time}`
       : data.start_time || "";
 
+    const parseSafeTime = (t?: string | null): string | null => {
+      if (!t) return null;
+      const m = t.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?/i);
+      if (!m) return null;
+      let hr = parseInt(m[1], 10);
+      const min = m[2];
+      const sec = m[3] || "00";
+      const ampm = m[4]?.toLowerCase();
+      if (ampm === "pm" && hr < 12) hr += 12;
+      if (ampm === "am" && hr === 12) hr = 0;
+      return `${String(hr).padStart(2, "0")}:${min}:${sec}`;
+    };
+    const safeTime = parseSafeTime(data.start_time);
+
     const general = (existing.general || {}) as Record<string, any>;
     general.title = data.title;
     if (data.description) general.description = data.description;
+    if (timeDisplay) general.event_time = timeDisplay;
+    if (data.start_time) general.start_time = data.start_time;
+    if (data.end_time) general.end_time = data.end_time;
+    if (data.venue) general.venue = data.venue;
+    if (data.event_date) general.event_date = data.event_date;
 
     const { error: updErr } = await supabaseAdmin
       .from("events")
       .update({
         event_date: data.event_date || null,
-        event_time: timeDisplay,
+        event_time: safeTime,
         venue: data.venue || null,
         description: data.description || null,
         publish_status: data.publish_status,

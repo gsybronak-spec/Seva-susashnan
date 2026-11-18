@@ -137,8 +137,8 @@ export function CampaignDashboard({ campaignId, onBack, onManageEvent }: Campaig
 
   const campaign = dashboardData?.ok ? dashboardData.campaign : null;
   const stats = dashboardData?.ok ? dashboardData.stats : null;
-  const zones = dashboardData?.ok ? dashboardData.zones : [];
-  const campaignEvents = eventsData?.ok ? eventsData.events : [];
+  const zones = (dashboardData?.ok ? (dashboardData.zones || dashboardData.stats?.zoneStats) : []) ?? [];
+  const campaignEvents = (eventsData?.ok ? eventsData.events : []) ?? [];
 
   const isSnehMilan = isYogSnehMilanCampaign({
     campaignId: campaign?.id,
