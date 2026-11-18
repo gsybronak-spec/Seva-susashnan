@@ -520,20 +520,27 @@ export function CampaignsManager({
     setFormOpen(true);
   }
 
+  const activeCampaigns = campaigns.filter(
+    (c) => c.publish_status !== "archived" || c.registration_status === "open"
+  );
+  const archivedCampaigns = campaigns.filter(
+    (c) => c.publish_status === "archived" && c.registration_status !== "open"
+  );
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-bold text-brand-primary">
             <Megaphone className="h-5 w-5" />
-            Campaigns
+            Campaigns (અભિયાનો)
           </h2>
           <p className="text-xs text-muted-foreground">
             Campaigns are the parent-level entity under the Gujarat State Yog Board — each groups its own
             events, registration form, participants, attendance, certificates and reports.
           </p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} className="bg-[#0F3E3E] hover:bg-[#144D4D] text-white">
           <Plus className="mr-1 h-4 w-4" />
           New Campaign
         </Button>
@@ -548,105 +555,148 @@ export function CampaignsManager({
       ) : (
         <div className="space-y-6">
           {/* Active Campaigns Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {campaigns.map((c) => {
-              const isPublished = c.publish_status === "published";
-              const isOpen = c.registration_status === "open";
-              return (
-                <div
-                  key={c.id}
-                  className="rounded-2xl border-2 border-border/80 hover:border-brand-primary/50 bg-card p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                            isPublished
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : "bg-muted text-muted-foreground"
-                          }`}
+          <div className="space-y-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              ચાલુ અભિયાનો (Active Campaigns - {activeCampaigns.length})
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeCampaigns.map((c) => {
+                const isPublished = c.publish_status === "published";
+                const isOpen = c.registration_status === "open";
+                return (
+                  <div
+                    key={c.id}
+                    className="rounded-2xl border-2 border-border/80 hover:border-brand-primary/50 bg-card p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              isPublished
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {isPublished ? "ચાલુ છે (Published)" : c.publish_status}
+                          </span>
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              isOpen
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : "bg-red-50 text-red-700 border border-red-200"
+                            }`}
+                          >
+                            {isOpen ? "નોંધણી ચાલુ (Reg Open)" : "નોંધણી બંધ (Closed)"}
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono text-muted-foreground">/{c.slug}</span>
+                      </div>
+
+                      <div>
+                        <h3
+                          className="text-lg font-bold text-foreground hover:text-brand-primary cursor-pointer transition-colors"
+                          onClick={() => onOpenDashboard?.(c.id)}
                         >
-                          {isPublished ? "ચાલુ છે (Published)" : c.publish_status}
-                        </span>
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                            isOpen
-                              ? "bg-blue-50 text-blue-700 border border-blue-200"
-                              : "bg-red-50 text-red-700 border border-red-200"
-                          }`}
+                          {c.name}
+                        </h3>
+                        {c.slogan && <p className="text-xs text-muted-foreground mt-0.5">{c.slogan}</p>}
+                      </div>
+
+                      {/* Quick Stats Grid */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div className="rounded-xl bg-muted/40 p-2.5 border border-border/60">
+                          <span className="text-[11px] font-medium text-muted-foreground block">
+                            Campaign Events / સત્રો
+                          </span>
+                          <span className="text-base font-bold text-foreground flex items-center gap-1">
+                            <CalendarDays className="h-4 w-4 text-brand-primary" />
+                            {c.event_count || 0} Events
+                          </span>
+                        </div>
+                        <div className="rounded-xl bg-muted/40 p-2.5 border border-border/60">
+                          <span className="text-[11px] font-medium text-muted-foreground block">
+                            Total Registrations
+                          </span>
+                          <span className="text-base font-bold text-brand-primary flex items-center gap-1">
+                            <Users className="h-4 w-4 text-brand-primary" />
+                            {c.registration_count?.toLocaleString("en-IN") || 0}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 mt-3 border-t border-border flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit campaign">
+                          <Pencil className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                        {c.publish_status !== "archived" && (
+                          <Link to="/campaigns/$slug" params={{ slug: c.slug }} target="_blank">
+                            <Button size="sm" variant="ghost" title="View public campaign page">
+                              <ExternalLink className="h-4 w-4 mr-1" />
+                              Page
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
+
+                      {onOpenDashboard && (
+                        <Button
+                          size="sm"
+                          onClick={() => onOpenDashboard(c.id)}
+                          className="bg-[#0F3E3E] hover:bg-[#154E4E] text-white font-semibold shadow-xs"
                         >
-                          {isOpen ? "નોંધણી ચાલુ (Reg Open)" : "નોંધણી બંધ (Closed)"}
-                        </span>
-                      </div>
-                      <span className="text-xs font-mono text-muted-foreground">/{c.slug}</span>
-                    </div>
-
-                    <div>
-                      <h3
-                        className="text-lg font-bold text-foreground hover:text-brand-primary cursor-pointer transition-colors"
-                        onClick={() => onOpenDashboard?.(c.id)}
-                      >
-                        {c.name}
-                      </h3>
-                      {c.slogan && <p className="text-xs text-muted-foreground mt-0.5">{c.slogan}</p>}
-                    </div>
-
-                    {/* Quick Stats Grid */}
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div className="rounded-xl bg-muted/40 p-2.5 border border-border/60">
-                        <span className="text-[11px] font-medium text-muted-foreground block">
-                          Campaign Events / સત્રો
-                        </span>
-                        <span className="text-base font-bold text-foreground flex items-center gap-1">
-                          <CalendarDays className="h-4 w-4 text-brand-primary" />
-                          {c.event_count || 0} Events
-                        </span>
-                      </div>
-                      <div className="rounded-xl bg-muted/40 p-2.5 border border-border/60">
-                        <span className="text-[11px] font-medium text-muted-foreground block">
-                          Total Registrations
-                        </span>
-                        <span className="text-base font-bold text-brand-primary flex items-center gap-1">
-                          <Users className="h-4 w-4 text-brand-primary" />
-                          {c.registration_count?.toLocaleString("en-IN") || 0}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 mt-3 border-t border-border flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit campaign">
-                        <Pencil className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
-                      {c.publish_status !== "archived" && (
-                        <Link to="/campaigns/$slug" params={{ slug: c.slug }} target="_blank">
-                          <Button size="sm" variant="ghost" title="View public campaign page">
-                            <ExternalLink className="h-4 w-4 mr-1" />
-                            Page
-                          </Button>
-                        </Link>
+                          <LayoutDashboard className="h-4 w-4 mr-1.5" />
+                          અભિયાન ડેશબોર્ડ ખોલો
+                          <ArrowRight className="h-4 w-4 ml-1" />
+                        </Button>
                       )}
                     </div>
-
-                    {onOpenDashboard && (
-                      <Button
-                        size="sm"
-                        onClick={() => onOpenDashboard(c.id)}
-                        className="bg-[#0F3E3E] hover:bg-[#154E4E] text-white font-semibold shadow-xs"
-                      >
-                        <LayoutDashboard className="h-4 w-4 mr-1.5" />
-                        અભિયાન ડેશબોર્ડ ખોલો
-                        <ArrowRight className="h-4 w-4 ml-1" />
-                      </Button>
-                    )}
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
+
+          {/* Archived Campaigns in a Collapsible Section */}
+          {archivedCampaigns.length > 0 && (
+            <details className="group rounded-xl border border-border/80 bg-muted/20 overflow-hidden">
+              <summary className="flex cursor-pointer items-center justify-between p-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted/40 transition-colors">
+                <span>📁 આર્કાઇવ્ડ / જૂના અભિયાનો (Archived Campaigns - {archivedCampaigns.length})</span>
+                <span className="text-[11px] font-normal normal-case text-muted-foreground">ક્લિક કરીને જુઓ ▼</span>
+              </summary>
+              <div className="p-4 border-t border-border/60 bg-card">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <th className="py-2">Campaign</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">Events</th>
+                      <th className="py-2">Registrations</th>
+                      <th className="py-2 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {archivedCampaigns.map((c) => (
+                      <tr key={c.id} className="border-b border-border/40 last:border-0 hover:bg-muted/10">
+                        <td className="py-2.5 font-medium">{c.name}</td>
+                        <td className="py-2.5 text-xs text-muted-foreground">{c.publish_status}</td>
+                        <td className="py-2.5 text-xs">{c.event_count || 0}</td>
+                        <td className="py-2.5 text-xs font-bold">{c.registration_count || 0}</td>
+                        <td className="py-2.5 text-right">
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => onOpenDashboard?.(c.id)}>
+                            Open Dashboard
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
 
           {/* Detailed Campaigns Table */}
           <div className="overflow-x-auto rounded-xl border border-border bg-card">

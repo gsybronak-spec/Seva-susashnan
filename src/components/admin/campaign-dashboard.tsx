@@ -1240,15 +1240,15 @@ export function CampaignDashboard({ campaignId, onBack, onManageEvent }: Campaig
                 placeholder="e.g. અમદાવાદ સત્ર, મોર્નિંગ યોગ શિબિર, સત્ર 2"
                 value={eventTitle}
                 onChange={(e) => {
-                  setEventTitle(e.target.value);
-                  if (!editingEventId && !eventSlug) {
-                    setEventSlug(
-                      e.target.value
-                        .toLowerCase()
-                        .trim()
-                        .replace(/[^a-z0-9]+/g, "-")
-                        .replace(/^-|-$/g, "")
-                    );
+                  const val = e.target.value;
+                  setEventTitle(val);
+                  if (!editingEventId) {
+                    const latin = val
+                      .toLowerCase()
+                      .trim()
+                      .replace(/[^a-z0-9]+/g, "-")
+                      .replace(/^-|-$/g, "");
+                    setEventSlug(latin || `session-${campaignEvents.length + 1}`);
                   }
                 }}
               />

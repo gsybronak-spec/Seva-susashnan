@@ -499,8 +499,12 @@ function Dashboard({
   const [settingsTab, setSettingsTab] = useState<
     "status" | "coverage" | "form" | "partner_form" | "general" | "features" | "attendance" | "certificate" | "referral" | "whatsapp" | "social"
   >("status");
-  function openEventFor(id: string, action: "settings" | "form" | "certificates") {
+  function openEventFor(id: string, action: "settings" | "form" | "certificates", campaignId?: string) {
     setSelectedEventId(id);
+    const targetCampaignId = campaignId || selectedCampaignDashboardId || "";
+    if (targetCampaignId) {
+      setCampaignFilterId(targetCampaignId);
+    }
     if (action === "certificates") {
       setWorkspaceTab("certificates");
     } else {
@@ -529,6 +533,7 @@ function Dashboard({
     const rawRows = (eventsData?.ok ? eventsData.rows : []) as unknown as Array<{
       id: string;
       slug: string;
+      campaign_id?: string | null;
       general: { title?: string } | null;
       district: string | null;
       district_id?: string | null;
@@ -536,7 +541,15 @@ function Dashboard({
       coverage_district_names?: string[];
       is_active: boolean;
     }>;
-    const rows = rawRows.filter((r) => r.slug !== "vadodara-yog-shibir");
+    let rows = rawRows.filter((r) => r.slug !== "vadodara-yog-shibir");
+
+    // CRITICAL ISOLATION: When inside a campaign, strictly scope event options to that campaign!
+    // Old legacy district shibirs (campaign_id: null) must NEVER appear.
+    const effectiveCampaignId = campaignFilterId || selectedCampaignDashboardId;
+    if (effectiveCampaignId) {
+      rows = rows.filter((r) => r.campaign_id === effectiveCampaignId);
+    }
+
     return rows.map((r) => {
       const cov = r.coverage_type ?? "single";
       const covLabel =
@@ -550,7 +563,7 @@ function Dashboard({
         label: `${r.general?.title || r.slug} · ${covLabel}${r.is_active ? " • active" : ""}`,
       };
     });
-  }, [eventsData]);
+  }, [eventsData, campaignFilterId, selectedCampaignDashboardId]);
   const selectedEventLabel = useMemo(
     () => eventOptions.find((w) => w.id === selectedEventId)?.label ?? "",
     [eventOptions, selectedEventId],
@@ -832,36 +845,40 @@ function Dashboard({
               <Megaphone className="mr-1.5 h-4 w-4" />
               Campaigns (અભિયાનો)
             </Button>
-            <Button
-              size="sm"
-              variant={adminMode === "events" ? "default" : "ghost"}
-              className={
-                adminMode === "events"
-                  ? "bg-[#0F3E3E] text-white font-semibold shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              }
-              onClick={() => {
-                setAdminMode("events");
-              }}
-            >
-              <CalendarDays className="mr-1.5 h-4 w-4" />
-              Standalone Events (શિબિરો)
-            </Button>
-            <Button
-              size="sm"
-              variant={adminMode === "workspace" ? "default" : "ghost"}
-              className={
-                adminMode === "workspace"
-                  ? "bg-[#0F3E3E] text-white font-semibold shadow-xs"
-                  : "text-muted-foreground hover:text-foreground"
-              }
-              onClick={() => {
-                setAdminMode("workspace");
-              }}
-            >
-              <LayoutGrid className="mr-1.5 h-4 w-4" />
-              Workspace (સેટિંગ્સ)
-            </Button>
+            {isSuper && (
+              <Button
+                size="sm"
+                variant={adminMode === "events" ? "default" : "ghost"}
+                className={
+                  adminMode === "events"
+                    ? "bg-[#0F3E3E] text-white font-semibold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }
+                onClick={() => {
+                  setAdminMode("events");
+                }}
+              >
+                <CalendarDays className="mr-1.5 h-4 w-4" />
+                2024 જૂની શિબિરો (Legacy Archive)
+              </Button>
+            )}
+            {isSuper && (selectedCampaignDashboardId || campaignFilterId) && (
+              <Button
+                size="sm"
+                variant={adminMode === "workspace" ? "default" : "ghost"}
+                className={
+                  adminMode === "workspace"
+                    ? "bg-[#0F3E3E] text-white font-semibold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }
+                onClick={() => {
+                  setAdminMode("workspace");
+                }}
+              >
+                <LayoutGrid className="mr-1.5 h-4 w-4" />
+                Workspace (સેટિંગ્સ)
+              </Button>
+            )}
           </div>
 
           {selectedEventSlug ? (
@@ -930,9 +947,12 @@ function Dashboard({
           {selectedCampaignDashboardId ? (
             <CampaignDashboard
               campaignId={selectedCampaignDashboardId}
-              onBack={() => setSelectedCampaignDashboardId(null)}
+              onBack={() => {
+                setSelectedCampaignDashboardId(null);
+                setCampaignFilterId("");
+              }}
               onManageEvent={(eventId, act) => {
-                openEventFor(eventId, act || "settings");
+                openEventFor(eventId, act || "settings", selectedCampaignDashboardId);
               }}
             />
           ) : (
@@ -957,6 +977,13 @@ function Dashboard({
 
       {adminMode === "events" && (
         <Suspense fallback={<TabFallback />}>
+          <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs text-amber-800">
+            <div className="font-bold flex items-center gap-1.5 text-sm mb-1">
+              <CalendarDays className="h-4 w-4" />
+              ૨૦૨૪ જૂની શિબિરો - હિસ્ટોરિક આર્કાઇવ (Legacy District Shibirs Archive)
+            </div>
+            આ તમામ ૩૪ જિલ્લા શિબિરો સપ્ટેમ્બર ૨૦૨૪ ના પૂર્ણ થયેલ ઐતિહાસિક રેકોર્ડ છે. આ વર્તમાન યોગ સ્નેહમિલન અભિયાનથી સંપૂર્ણપણે અલગ અને સ્વતંત્ર છે.
+          </div>
           <EventOverview isSuper={isSuper} onOpen={openWorkspace} />
         </Suspense>
       )}
@@ -1001,9 +1028,24 @@ function Dashboard({
             </div>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setPickerOpen(true)}>
-          {selectedEventId ? "Change Event" : "Select Event"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {selectedCampaignDashboardId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAdminMode("campaigns");
+              }}
+              className="font-semibold text-brand-primary border-brand-primary/40 hover:bg-brand-primary/5"
+            >
+              <ArrowLeft className="mr-1.5 h-4 w-4" />
+              અભિયાન ડેશબોર્ડ (Campaign Dashboard)
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => setPickerOpen(true)}>
+            {selectedEventId ? "Change Event" : "Select Event"}
+          </Button>
+        </div>
       </div>
 
 
@@ -1029,8 +1071,11 @@ function Dashboard({
                 {selectedCampaignDashboardId ? (
                   <CampaignDashboard
                     campaignId={selectedCampaignDashboardId}
-                    onBack={() => setSelectedCampaignDashboardId(null)}
-                    onManageEvent={(eventId) => openEventFor(eventId, "settings")}
+                    onBack={() => {
+                      setSelectedCampaignDashboardId(null);
+                      setCampaignFilterId("");
+                    }}
+                    onManageEvent={(eventId) => openEventFor(eventId, "settings", selectedCampaignDashboardId)}
                   />
                 ) : (
                   <CampaignsManager

@@ -187,11 +187,15 @@ export function EventsManager({
   const [levelFilter, setLevelFilter] = useState<"all" | "district" | "municipal">("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  const rows = allRows.filter(
-    (w) =>
-      (view === "templates" ? !!w.is_template : !w.is_template) &&
-      (!campaignFilterId || w.campaign_id === campaignFilterId),
-  );
+  const rows = allRows.filter((w) => {
+    if (view === "templates") return !!w.is_template;
+    if (w.is_template) return false;
+    if (campaignFilterId) {
+      return w.campaign_id === campaignFilterId;
+    }
+    // Standalone legacy events (2024 shibirs) only when no campaign filter is set
+    return !w.campaign_id;
+  });
 
   const filteredRows = useMemo(() => {
     const list = rows.filter((w) => {

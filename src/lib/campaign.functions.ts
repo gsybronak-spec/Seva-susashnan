@@ -1139,9 +1139,14 @@ export const adminAddEventToCampaign = createServerFn({ method: "POST" })
         .toLowerCase()
         .trim()
         .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") || "session";
+        .replace(/^-|-$/g, "");
 
-    const cleanBase = data.slug ? safeSlugify(data.slug) : safeSlugify(`${campaign.slug}-${data.title}`);
+    let cleanBase = data.slug ? safeSlugify(data.slug) : "";
+    if (!cleanBase) {
+      const titleSlug = safeSlugify(data.title);
+      cleanBase = titleSlug ? `${campaign.slug}-${titleSlug}` : `${campaign.slug}-session`;
+    }
+    if (!cleanBase) cleanBase = "session";
     let uniqueSlug = cleanBase;
     let i = 1;
     while (true) {
