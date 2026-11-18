@@ -194,6 +194,23 @@ export const adminListCampaigns = createServerFn({ method: "GET" }).handler(asyn
     })
   );
 
+  // Sort active running campaigns first: published -> open -> highest registrations -> newest
+  enriched.sort((a, b) => {
+    const aPub = a.publish_status === "published" ? 1 : 0;
+    const bPub = b.publish_status === "published" ? 1 : 0;
+    if (aPub !== bPub) return bPub - aPub;
+
+    const aOpen = a.registration_status === "open" ? 1 : 0;
+    const bOpen = b.registration_status === "open" ? 1 : 0;
+    if (aOpen !== bOpen) return bOpen - aOpen;
+
+    const aReg = a.registration_count || 0;
+    const bReg = b.registration_count || 0;
+    if (aReg !== bReg) return bReg - aReg;
+
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
   return { ok: true as const, campaigns: enriched };
 });
 
