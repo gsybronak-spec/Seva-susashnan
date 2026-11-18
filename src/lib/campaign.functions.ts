@@ -1018,12 +1018,12 @@ export const loadCampaignZoneRegistrationData = createServerFn({ method: "POST" 
         return { ok: false as const, error: `Registration for ${zone.name} is currently disabled.` };
       }
 
-      // Fetch primary event
+      // Fetch primary event (foundational/first created event, canonical yog-sneh-milan-2026 for Sneh Milan)
       const { data: ev } = await supabaseAdmin
         .from("events")
-        .select("id, slug, general, publish_status, lifecycle_status, features")
+        .select("id, slug, general, publish_status, lifecycle_status, features, created_at")
         .eq("campaign_id", c.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       const events = (ev ?? []) as unknown as Array<{
         id: string;
@@ -1032,17 +1032,23 @@ export const loadCampaignZoneRegistrationData = createServerFn({ method: "POST" 
         publish_status: string;
         lifecycle_status: string;
         features: { registration?: boolean } | null;
+        created_at: string;
       }>;
 
-      const event = events.find(
+      const publishedEvents = events.filter(
         (e) =>
           e.publish_status === "published" &&
           e.lifecycle_status !== "archived" &&
           e.features?.registration !== false,
       );
-      if (!event) {
+
+      if (publishedEvents.length === 0) {
         return { ok: false as const, error: "No open events under this campaign right now." };
       }
+
+      const event =
+        publishedEvents.find((e) => e.slug === "yog-sneh-milan-2026") ??
+        publishedEvents[0];
 
       const { resolveEvent } = await import("@/lib/event-resolver.server");
       const resolved = await resolveEvent(event.slug);
@@ -1263,29 +1269,10 @@ export const adminAddEventToCampaign = createServerFn({ method: "POST" })
               default_value: "",
             },
             {
-              key: "gender",
-              type: "radio",
-              label: "Gender / જાતિ",
-              order: 3,
-              hidden: false,
-              unique: false,
-              builtin: true,
-              enabled: true,
-              options: [
-                { label: "Male / પુરુષ", value: "Male" },
-                { label: "Female / મહિલા", value: "Female" },
-              ],
-              readonly: false,
-              required: true,
-              validation: {},
-              help: "Select your gender.",
-              default_value: "",
-            },
-            {
               key: "district",
               type: "dropdown",
               label: "District / જિલ્લો",
-              order: 4,
+              order: 3,
               hidden: false,
               unique: false,
               builtin: true,

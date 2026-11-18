@@ -35,7 +35,10 @@ function sanitizeEventForPublic<T extends Record<string, unknown> | null | undef
 // is still event-scoped (the campaign's primary event by default).
 const loadCampaignRegistrationData = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({ slug: z.string().trim().min(1).max(80).toLowerCase() }).parse(input),
+    z.object({
+      slug: z.string().trim().min(1).max(80).toLowerCase(),
+      eventSlug: z.string().trim().max(80).optional(),
+    }).parse(input),
   )
   .handler(async ({ data }) => {
     try {
@@ -52,12 +55,12 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
       if (c.registration_status !== "open") {
         return { ok: false as const, error: "Registration for this campaign is currently closed." };
       }
-      // The campaign's primary event = its most recent published event.
+      // Load campaign events ordered from earliest created to latest
       const { data: ev } = await supabaseAdmin
         .from("events")
-        .select("id, slug, general, publish_status, lifecycle_status, features")
+        .select("id, slug, general, publish_status, lifecycle_status, features, created_at")
         .eq("campaign_id", c.id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
       const events = (ev ?? []) as unknown as Array<{
         id: string;
         slug: string;
@@ -65,15 +68,32 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
         publish_status: string;
         lifecycle_status: string;
         features: { registration?: boolean } | null;
+        created_at: string;
       }>;
-      const event = events.find(
+      const publishedEvents = events.filter(
         (e) =>
           e.publish_status === "published" &&
           e.lifecycle_status !== "archived" &&
           e.features?.registration !== false,
       );
-      if (!event) {
+      if (publishedEvents.length === 0) {
         return { ok: false as const, error: "No open events under this campaign right now." };
+      }
+
+      // If a specific eventSlug was requested, resolve that event
+      let event = data.eventSlug
+        ? publishedEvents.find((e) => e.slug.toLowerCase() === data.eventSlug?.toLowerCase())
+        : null;
+
+      // Otherwise, Yog Sneh Milan defaults to the canonical primary event 'yog-sneh-milan-2026'
+      if (!event) {
+        event =
+          publishedEvents.find((e) => e.slug === "yog-sneh-milan-2026") ??
+          publishedEvents[0];
+      }
+
+      if (!event) {
+        return { ok: false as const, error: "Event details could not be found." };
       }
       const { resolveEvent } = await import("@/lib/event-resolver.server");
       const resolved = await resolveEvent(event.slug);
@@ -106,10 +126,11 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
   });
 
 export const Route = createFileRoute("/campaigns/$slug/register")({
-  validateSearch: (search: Record<string, unknown>): { ref?: string; partner?: string; zone?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { ref?: string; partner?: string; zone?: string; event?: string } => ({
     ...(typeof search.ref === "string" ? { ref: search.ref } : {}),
     ...(typeof search.partner === "string" ? { partner: search.partner } : {}),
     ...(typeof search.zone === "string" ? { zone: search.zone } : {}),
+    ...(typeof search.event === "string" ? { event: search.event } : {}),
   }),
   head: () => ({
     meta: [{ title: `Register — ${BRAND.name}` }],
@@ -129,11 +150,11 @@ function themeStyle(theme: CampaignTheme | null | undefined): React.CSSPropertie
 
 function CampaignRegisterPage() {
   const { slug } = Route.useParams();
-  const { ref, partner, zone } = Route.useSearch();
+  const { ref, partner, zone, event: eventParam } = Route.useSearch();
   const load = useServerFn(loadCampaignRegistrationData);
   const { data, isLoading } = useQuery({
-    queryKey: ["campaign-register", slug],
-    queryFn: () => load({ data: { slug } }),
+    queryKey: ["campaign-register", slug, eventParam],
+    queryFn: () => load({ data: { slug, eventSlug: eventParam } }),
   });
 
   if (isLoading) {
@@ -190,7 +211,6 @@ function CampaignRegisterPage() {
         partnerSlug={partner}
         initialData={payload.initialData}
         lockedZone={lockedZone}
-        availableZones={payload.zones}
       />
     </div>
   );
