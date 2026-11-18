@@ -64,6 +64,14 @@ const registerSchema = z.object({
   // Submitted only for zone / state events: the participant's district id,
   // validated server-side against the event's coverage (never trusted as-is).
   district_id: z.string().uuid().optional(),
+  // Campaign zone attribution (Zone 1, Zone 2, Zone 3, Zone 4, etc.)
+  zone_id: z.string().uuid().optional(),
+  zone_slug: z
+    .string()
+    .trim()
+    .max(80)
+    .optional()
+    .transform((v) => (v ? v.toLowerCase() : undefined)),
   custom_fields: z.record(z.string(), z.any()).optional(),
 });
 
@@ -420,6 +428,37 @@ export const registerParticipant = createServerFn({ method: "POST" })
       }
     }
 
+    // Authoritative Zone Resolution for Campaigns
+    let resolvedZoneId: string | null = null;
+    let resolvedZoneName: string | null = null;
+
+    if (campaignId && (data.zone_id || data.zone_slug)) {
+      let zoneQuery = supabaseAdmin
+        .from("campaign_zones")
+        .select("id, name, is_active")
+        .eq("campaign_id", campaignId);
+
+      if (data.zone_id) {
+        zoneQuery = zoneQuery.eq("id", data.zone_id);
+      } else if (data.zone_slug) {
+        zoneQuery = zoneQuery.eq("slug", data.zone_slug);
+      }
+
+      const { data: zoneRow } = await zoneQuery.maybeSingle();
+      if (zoneRow) {
+        if (!zoneRow.is_active) {
+          return {
+            ok: false as const,
+            error: "આ ઝોન માટે રજીસ્ટ્રેશન હાલમાં બંધ છે.",
+          };
+        }
+        resolvedZoneId = zoneRow.id;
+        resolvedZoneName = zoneRow.name;
+        cf.zone = zoneRow.name;
+        cf.zone_id = zoneRow.id;
+      }
+    }
+
     // The DB trigger assigns registration_number using this event's own
     // prefix + per-event sequence, so we send a placeholder and read back
     // the authoritative value from the insert.
@@ -447,6 +486,8 @@ export const registerParticipant = createServerFn({ method: "POST" })
         event_id,
         district_id,
         campaign_id: campaignId,
+        zone_id: resolvedZoneId,
+        zone_name: resolvedZoneName,
         // Unique per-participant QR token used on the digital ID card for
         // physical check-in at the shibir venue.
         qr_token: crypto.randomUUID().replace(/-/g, ""),

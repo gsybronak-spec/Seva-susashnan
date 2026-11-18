@@ -85,11 +85,19 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
         district_name: resolved.district_name,
         coverage_districts: resolved.coverage_districts,
       };
+      const { data: zones } = await supabaseAdmin
+        .from("campaign_zones")
+        .select("id, name, slug, description, display_order")
+        .eq("campaign_id", c.id)
+        .eq("is_active", true)
+        .order("display_order", { ascending: true });
+
       return {
         ok: true as const,
         campaign: { slug: c.slug, name: c.name },
         eventSlug: event.slug,
         initialData,
+        zones: (zones ?? []) as Array<{ id: string; name: string; slug: string; description?: string | null }>,
       };
     } catch (err) {
       console.warn("[loadCampaignRegistrationData] error:", err);
@@ -98,9 +106,10 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
   });
 
 export const Route = createFileRoute("/campaigns/$slug/register")({
-  validateSearch: (search: Record<string, unknown>): { ref?: string; partner?: string } => ({
+  validateSearch: (search: Record<string, unknown>): { ref?: string; partner?: string; zone?: string } => ({
     ...(typeof search.ref === "string" ? { ref: search.ref } : {}),
     ...(typeof search.partner === "string" ? { partner: search.partner } : {}),
+    ...(typeof search.zone === "string" ? { zone: search.zone } : {}),
   }),
   head: () => ({
     meta: [{ title: `Register — ${BRAND.name}` }],
@@ -120,7 +129,7 @@ function themeStyle(theme: CampaignTheme | null | undefined): React.CSSPropertie
 
 function CampaignRegisterPage() {
   const { slug } = Route.useParams();
-  const { ref, partner } = Route.useSearch();
+  const { ref, partner, zone } = Route.useSearch();
   const load = useServerFn(loadCampaignRegistrationData);
   const { data, isLoading } = useQuery({
     queryKey: ["campaign-register", slug],
@@ -152,6 +161,7 @@ function CampaignRegisterPage() {
     campaign: { slug: string; name: string };
     eventSlug: string;
     initialData: EventConfigInitialData;
+    zones?: Array<{ id: string; name: string; slug: string; description?: string | null }>;
   };
 
   const isSnehMilan = isYogSnehMilanCampaign({
@@ -159,6 +169,10 @@ function CampaignRegisterPage() {
     campaignName: payload.campaign.name,
     eventSlug: payload.eventSlug,
   });
+
+  const lockedZone = zone
+    ? payload.zones?.find((z) => z.slug.toLowerCase() === zone.toLowerCase() || z.id === zone) ?? null
+    : null;
 
   return (
     <div style={themeStyle((payload.initialData.config as { theme?: CampaignTheme } | null)?.theme)}>
@@ -175,6 +189,8 @@ function CampaignRegisterPage() {
         refCode={ref}
         partnerSlug={partner}
         initialData={payload.initialData}
+        lockedZone={lockedZone}
+        availableZones={payload.zones}
       />
     </div>
   );

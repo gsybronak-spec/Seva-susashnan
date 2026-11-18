@@ -520,3 +520,510 @@ export const adminUploadCampaignImage = createServerFn({ method: "POST" })
     if (!pub?.publicUrl) return { ok: false as const, error: "Upload succeeded but the public URL could not be generated." };
     return { ok: true as const, url: pub.publicUrl };
   });
+
+// ============================================================
+// CAMPAIGN INDEPENDENT DASHBOARD & ZONE MANAGEMENT
+// ============================================================
+
+export type CampaignZone = {
+  id: string;
+  campaign_id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+  registration_count?: number;
+};
+
+export function sanitizeCampaignEventForPublic<T extends Record<string, unknown> | null | undefined>(row: T): T {
+  if (!row) return row;
+  const clone: Record<string, unknown> = {};
+  const allowed = [
+    "id", "slug", "is_active", "is_template", "template_category",
+    "lifecycle_status", "publish_status", "archived_at", "type",
+    "description", "district", "district_id", "district_name", "campaign_id",
+    "event_date", "event_time", "venue", "registration_open_at",
+    "registration_close_at", "max_registrations", "reg_prefix",
+    "general", "features", "live", "attendance", "certificate",
+    "referral", "whatsapp", "social", "status", "demo_mode",
+    "form", "partner_form", "created_at", "updated_at"
+  ];
+  for (const key of allowed) {
+    if (key in (row as Record<string, unknown>)) {
+      clone[key] = (row as Record<string, unknown>)[key];
+    }
+  }
+  return clone as T;
+}
+
+// ---------------- Admin: Get Campaign Dashboard ----------------
+export const adminGetCampaignDashboard = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ campaignId: z.string().uuid() }).parse(input))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Fetch Campaign
+    const { data: campaign, error: cErr } = await supabaseAdmin
+      .from("campaigns")
+      .select(CAMPAIGN_COLUMNS)
+      .eq("id", data.campaignId)
+      .maybeSingle();
+
+    if (cErr || !campaign) {
+      return { ok: false as const, error: "Campaign not found." };
+    }
+
+    // 2. Fetch primary event for this campaign
+    const { data: primaryEvent } = await supabaseAdmin
+      .from("events")
+      .select("id, slug, general, features, form, publish_status, registration_open_at, registration_close_at, max_registrations")
+      .eq("campaign_id", data.campaignId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // 3. Fetch zones for this campaign
+    const { data: zones } = await supabaseAdmin
+      .from("campaign_zones")
+      .select("id, name, slug, description, is_active, display_order, created_at, updated_at")
+      .eq("campaign_id", data.campaignId)
+      .order("display_order", { ascending: true });
+
+    const activeZones = (zones ?? []) as CampaignZone[];
+
+    // 4. Counts: total registrations for this campaign
+    const { count: totalRegistrations } = await supabaseAdmin
+      .from("registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", data.campaignId);
+
+    // 5. Today's registrations in IST
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istNow = new Date(now.getTime() + istOffset);
+    const todayStr = `${istNow.getUTCFullYear()}-${String(istNow.getUTCMonth() + 1).padStart(2, "0")}-${String(istNow.getUTCDate()).padStart(2, "0")}T00:00:00+05:30`;
+    const todayISO = new Date(todayStr).toISOString();
+
+    const { count: todayRegistrations } = await supabaseAdmin
+      .from("registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", data.campaignId)
+      .gte("created_at", todayISO);
+
+    // 6. Zone-wise counts
+    const zoneCounts = await Promise.all(
+      activeZones.map(async (z) => {
+        const { count } = await supabaseAdmin
+          .from("registrations")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", data.campaignId)
+          .eq("zone_id", z.id);
+        return {
+          id: z.id,
+          campaign_id: z.campaign_id,
+          name: z.name,
+          slug: z.slug,
+          description: z.description,
+          is_active: z.is_active,
+          display_order: z.display_order,
+          created_at: z.created_at,
+          updated_at: z.updated_at,
+          registration_count: count ?? 0,
+        };
+      })
+    );
+
+    // Count without zone
+    const { count: unassignedCount } = await supabaseAdmin
+      .from("registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", data.campaignId)
+      .is("zone_id", null);
+
+    return {
+      ok: true as const,
+      campaign: campaign as unknown as Campaign,
+      primaryEvent,
+      stats: {
+        totalRegistrations: totalRegistrations ?? 0,
+        todayRegistrations: todayRegistrations ?? 0,
+        zoneStats: zoneCounts,
+        unassignedCount: unassignedCount ?? 0,
+      },
+    };
+  });
+
+// ---------------- Admin: List Zones for a Campaign ----------------
+export const adminListCampaignZones = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ campaignId: z.string().uuid() }).parse(input))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: zones, error } = await supabaseAdmin
+      .from("campaign_zones")
+      .select("id, campaign_id, name, slug, description, is_active, display_order, created_at, updated_at")
+      .eq("campaign_id", data.campaignId)
+      .order("display_order", { ascending: true });
+    if (error) return { ok: false as const, error: error.message };
+
+    const withCounts = await Promise.all(
+      (zones ?? []).map(async (z: any) => {
+        const { count } = await supabaseAdmin
+          .from("registrations")
+          .select("id", { count: "exact", head: true })
+          .eq("campaign_id", data.campaignId)
+          .eq("zone_id", z.id);
+        return { ...z, registration_count: count ?? 0 };
+      })
+    );
+    return { ok: true as const, zones: withCounts };
+  });
+
+// ---------------- Admin: Create Zone under a Campaign ----------------
+export const adminCreateCampaignZone = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      campaignId: z.string().uuid(),
+      name: z.string().trim().min(1).max(100),
+      slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9_-]+$/i, "Slug must be alphanumeric, hyphen or underscore"),
+      description: z.string().trim().max(300).optional(),
+      is_active: z.boolean().default(true),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const cleanSlug = data.slug.toLowerCase();
+
+    const { data: existing } = await supabaseAdmin
+      .from("campaign_zones")
+      .select("id")
+      .eq("campaign_id", data.campaignId)
+      .eq("slug", cleanSlug)
+      .maybeSingle();
+    if (existing) {
+      return { ok: false as const, error: "A zone with this slug already exists in this campaign." };
+    }
+
+    const { data: lastZone } = await supabaseAdmin
+      .from("campaign_zones")
+      .select("display_order")
+      .eq("campaign_id", data.campaignId)
+      .order("display_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const nextOrder = (lastZone?.display_order ?? 0) + 1;
+
+    const { data: inserted, error } = await supabaseAdmin
+      .from("campaign_zones")
+      .insert({
+        campaign_id: data.campaignId,
+        name: data.name,
+        slug: cleanSlug,
+        description: data.description || null,
+        is_active: data.is_active,
+        display_order: nextOrder,
+      })
+      .select()
+      .single();
+
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const, zone: inserted };
+  });
+
+// ---------------- Admin: Update Zone ----------------
+export const adminUpdateCampaignZone = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      id: z.string().uuid(),
+      name: z.string().trim().min(1).max(100).optional(),
+      slug: z.string().trim().min(1).max(80).regex(/^[a-z0-9_-]+$/i).optional(),
+      description: z.string().trim().max(300).optional().nullable(),
+      is_active: z.boolean().optional(),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.slug !== undefined) patch.slug = data.slug.toLowerCase();
+    if (data.description !== undefined) patch.description = data.description;
+    if (data.is_active !== undefined) patch.is_active = data.is_active;
+
+    const { data: updated, error } = await supabaseAdmin
+      .from("campaign_zones")
+      .update(patch)
+      .eq("id", data.id)
+      .select()
+      .single();
+
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const, zone: updated };
+  });
+
+// ---------------- Admin: Delete Zone ----------------
+export const adminDeleteCampaignZone = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { count } = await supabaseAdmin
+      .from("registrations")
+      .select("id", { count: "exact", head: true })
+      .eq("zone_id", data.id);
+
+    if (count && count > 0) {
+      return {
+        ok: false as const,
+        error: `Cannot delete zone because it has ${count} registration(s). You can disable it instead.`,
+      };
+    }
+
+    const { error } = await supabaseAdmin
+      .from("campaign_zones")
+      .delete()
+      .eq("id", data.id);
+
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const };
+  });
+
+// ---------------- Admin: Get Campaign Registrations (Isolated & Paginated) ----------------
+export const adminGetCampaignRegistrations = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      campaignId: z.string().uuid(),
+      zoneId: z.string().uuid().optional(),
+      search: z.string().trim().max(100).optional(),
+      limit: z.number().int().min(1).max(200).default(50),
+      offset: z.number().int().min(0).default(0),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    let query = supabaseAdmin
+      .from("registrations")
+      .select(
+        "id, registration_number, full_name, mobile, district, zone_id, zone_name, referred_by, created_at, custom_fields",
+        { count: "exact" }
+      )
+      .eq("campaign_id", data.campaignId);
+
+    if (data.zoneId) {
+      query = query.eq("zone_id", data.zoneId);
+    }
+
+    if (data.search) {
+      const s = data.search.trim();
+      query = query.or(`full_name.ilike.%${s}%,mobile.ilike.%${s}%,registration_number.ilike.%${s}%,referred_by.ilike.%${s}%`);
+    }
+
+    const { data: rows, count, error } = await query
+      .order("created_at", { ascending: false })
+      .range(data.offset, data.offset + data.limit - 1);
+
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const, registrations: rows ?? [], totalCount: count ?? 0 };
+  });
+
+// ---------------- Admin: Export Campaign Registrations ----------------
+export const adminExportCampaignRegistrations = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      campaignId: z.string().uuid(),
+      zoneId: z.string().uuid().optional(),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    let query = supabaseAdmin
+      .from("registrations")
+      .select("id, registration_number, full_name, mobile, gender, district, taluka, zone_id, zone_name, referred_by, created_at")
+      .eq("campaign_id", data.campaignId);
+
+    if (data.zoneId) {
+      query = query.eq("zone_id", data.zoneId);
+    }
+
+    const { data: rows, error } = await query
+      .order("created_at", { ascending: false })
+      .limit(10000);
+
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const, rows: rows ?? [] };
+  });
+
+// ---------------- Admin: Update Campaign Form Settings (Isolated to Campaign's Event) ----------------
+export const adminUpdateCampaignFormSettings = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      campaignId: z.string().uuid(),
+      form: z.record(z.string(), z.any()),
+      general: z.record(z.string(), z.any()).optional(),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    await requireAdmin();
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: ev } = await supabaseAdmin
+      .from("events")
+      .select("id, general, form")
+      .eq("campaign_id", data.campaignId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!ev) {
+      return { ok: false as const, error: "Primary event for this campaign not found." };
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      form: data.form,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (data.general) {
+      updatePayload.general = {
+        ...((ev.general as Record<string, unknown>) || {}),
+        ...data.general,
+      };
+    }
+
+    const { error } = await supabaseAdmin
+      .from("events")
+      .update(updatePayload)
+      .eq("id", ev.id);
+
+    if (error) return { ok: false as const, error: error.message };
+    return { ok: true as const };
+  });
+
+// ---------------- Public: Get Campaign Zones ----------------
+export const getCampaignZonesPublic = createServerFn({ method: "GET" })
+  .inputValidator((input: unknown) =>
+    z.object({ campaignSlug: z.string().trim().min(1).max(80).toLowerCase() }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: campaign } = await supabaseAdmin
+      .from("campaigns")
+      .select("id, slug")
+      .eq("slug", data.campaignSlug)
+      .maybeSingle();
+
+    if (!campaign) return { ok: false as const, error: "Campaign not found" };
+
+    const { data: zones } = await supabaseAdmin
+      .from("campaign_zones")
+      .select("id, name, slug, description, is_active, display_order")
+      .eq("campaign_id", campaign.id)
+      .eq("is_active", true)
+      .order("display_order", { ascending: true });
+
+    return { ok: true as const, zones: zones ?? [] };
+  });
+
+// ---------------- Public: Load Campaign Zone Registration Data ----------------
+export const loadCampaignZoneRegistrationData = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({
+      slug: z.string().trim().min(1).max(80).toLowerCase(),
+      zoneSlug: z.string().trim().min(1).max(80).toLowerCase(),
+    }).parse(input)
+  )
+  .handler(async ({ data }) => {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: campaign } = await supabaseAdmin
+        .from("campaigns")
+        .select("id, name, slug, publish_status, registration_status")
+        .eq("slug", data.slug)
+        .maybeSingle();
+
+      const c = campaign as { id: string; name: string; slug: string; publish_status: string; registration_status: string } | null;
+      if (!c || c.publish_status === "archived") {
+        return { ok: false as const, error: "Campaign not available" };
+      }
+      if (c.registration_status !== "open") {
+        return { ok: false as const, error: "Registration for this campaign is currently closed." };
+      }
+
+      // Resolve Zone under this campaign
+      const { data: zone } = await supabaseAdmin
+        .from("campaign_zones")
+        .select("id, name, slug, description, is_active")
+        .eq("campaign_id", c.id)
+        .eq("slug", data.zoneSlug)
+        .maybeSingle();
+
+      if (!zone) {
+        return { ok: false as const, error: `Zone "${data.zoneSlug}" not found in this campaign.` };
+      }
+      if (!zone.is_active) {
+        return { ok: false as const, error: `Registration for ${zone.name} is currently disabled.` };
+      }
+
+      // Fetch primary event
+      const { data: ev } = await supabaseAdmin
+        .from("events")
+        .select("id, slug, general, publish_status, lifecycle_status, features")
+        .eq("campaign_id", c.id)
+        .order("created_at", { ascending: false });
+
+      const events = (ev ?? []) as unknown as Array<{
+        id: string;
+        slug: string;
+        general: { title?: string } | null;
+        publish_status: string;
+        lifecycle_status: string;
+        features: { registration?: boolean } | null;
+      }>;
+
+      const event = events.find(
+        (e) =>
+          e.publish_status === "published" &&
+          e.lifecycle_status !== "archived" &&
+          e.features?.registration !== false,
+      );
+      if (!event) {
+        return { ok: false as const, error: "No open events under this campaign right now." };
+      }
+
+      const { resolveEvent } = await import("@/lib/event-resolver.server");
+      const resolved = await resolveEvent(event.slug);
+      if (!resolved?.event) {
+        return { ok: false as const, error: "Event details could not be loaded." };
+      }
+
+      return {
+        ok: true as const,
+        campaign: { id: c.id, slug: c.slug, name: c.name },
+        eventSlug: event.slug,
+        zone: {
+          id: zone.id as string,
+          name: zone.name as string,
+          slug: zone.slug as string,
+          description: (zone.description as string) || null,
+        },
+        initialData: {
+          config: sanitizeCampaignEventForPublic(resolved.event),
+          district_name: resolved.district_name,
+          coverage_districts: resolved.coverage_districts,
+        },
+      };
+    } catch (err) {
+      console.warn("[loadCampaignZoneRegistrationData] error:", err);
+      return { ok: false as const, error: "Could not load the zone registration form. Please try again." };
+    }
+  });

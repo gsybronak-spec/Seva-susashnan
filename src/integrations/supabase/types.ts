@@ -286,6 +286,50 @@ export type Database = {
         }
         Relationships: []
       }
+      campaign_zones: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          description: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_zones_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       certificate_downloads: {
         Row: {
           certificate_issue_id: string | null
@@ -1192,6 +1236,8 @@ export type Database = {
           registration_number: string
           taluka: string | null
           village: string | null
+          zone_id: string | null
+          zone_name: string | null
         }
         Insert: {
           age?: number | null
@@ -1220,6 +1266,8 @@ export type Database = {
           registration_number: string
           taluka?: string | null
           village?: string | null
+          zone_id?: string | null
+          zone_name?: string | null
         }
         Update: {
           age?: number | null
@@ -1248,6 +1296,8 @@ export type Database = {
           registration_number?: string
           taluka?: string | null
           village?: string | null
+          zone_id?: string | null
+          zone_name?: string | null
         }
         Relationships: [
           {

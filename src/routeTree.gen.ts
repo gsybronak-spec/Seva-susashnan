@@ -36,6 +36,7 @@ import { Route as EventPartnerSlugRouteImport } from './routes/$event.partner.$s
 import { Route as CampaignsSlugIndexRouteImport } from './routes/campaigns.$slug.index'
 import { Route as CampaignsSlugRegisterRouteImport } from './routes/campaigns.$slug.register'
 import { Route as RegisterPartnerSlugRouteImport } from './routes/register.partner.$slug'
+import { Route as CampaignsSlugZoneZoneSlugRouteImport } from './routes/campaigns.$slug.zone.$zoneSlug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -172,6 +173,12 @@ const RegisterPartnerSlugRoute = RegisterPartnerSlugRouteImport.update({
   path: '/partner/$slug',
   getParentRoute: () => RegisterRoute,
 } as any)
+const CampaignsSlugZoneZoneSlugRoute =
+  CampaignsSlugZoneZoneSlugRouteImport.update({
+    id: '/zone/$zoneSlug',
+    path: '/zone/$zoneSlug',
+    getParentRoute: () => CampaignsSlugRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -201,6 +208,7 @@ export interface FileRoutesByFullPath {
   '/campaigns/$slug/register': typeof CampaignsSlugRegisterRoute
   '/register/partner/$slug': typeof RegisterPartnerSlugRoute
   '/campaigns/$slug/': typeof CampaignsSlugIndexRoute
+  '/campaigns/$slug/zone/$zoneSlug': typeof CampaignsSlugZoneZoneSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -228,6 +236,7 @@ export interface FileRoutesByTo {
   '/campaigns/$slug/register': typeof CampaignsSlugRegisterRoute
   '/register/partner/$slug': typeof RegisterPartnerSlugRoute
   '/campaigns/$slug': typeof CampaignsSlugIndexRoute
+  '/campaigns/$slug/zone/$zoneSlug': typeof CampaignsSlugZoneZoneSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -258,6 +267,7 @@ export interface FileRoutesById {
   '/campaigns/$slug/register': typeof CampaignsSlugRegisterRoute
   '/register/partner/$slug': typeof RegisterPartnerSlugRoute
   '/campaigns/$slug/': typeof CampaignsSlugIndexRoute
+  '/campaigns/$slug/zone/$zoneSlug': typeof CampaignsSlugZoneZoneSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -289,6 +299,7 @@ export interface FileRouteTypes {
     | '/campaigns/$slug/register'
     | '/register/partner/$slug'
     | '/campaigns/$slug/'
+    | '/campaigns/$slug/zone/$zoneSlug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -316,6 +327,7 @@ export interface FileRouteTypes {
     | '/campaigns/$slug/register'
     | '/register/partner/$slug'
     | '/campaigns/$slug'
+    | '/campaigns/$slug/zone/$zoneSlug'
   id:
     | '__root__'
     | '/'
@@ -345,6 +357,7 @@ export interface FileRouteTypes {
     | '/campaigns/$slug/register'
     | '/register/partner/$slug'
     | '/campaigns/$slug/'
+    | '/campaigns/$slug/zone/$zoneSlug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -557,6 +570,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegisterPartnerSlugRouteImport
       parentRoute: typeof RegisterRoute
     }
+    '/campaigns/$slug/zone/$zoneSlug': {
+      id: '/campaigns/$slug/zone/$zoneSlug'
+      path: '/zone/$zoneSlug'
+      fullPath: '/campaigns/$slug/zone/$zoneSlug'
+      preLoaderRoute: typeof CampaignsSlugZoneZoneSlugRouteImport
+      parentRoute: typeof CampaignsSlugRoute
+    }
   }
 }
 
@@ -607,11 +627,13 @@ const RegisterRouteWithChildren = RegisterRoute._addFileChildren(
 interface CampaignsSlugRouteChildren {
   CampaignsSlugRegisterRoute: typeof CampaignsSlugRegisterRoute
   CampaignsSlugIndexRoute: typeof CampaignsSlugIndexRoute
+  CampaignsSlugZoneZoneSlugRoute: typeof CampaignsSlugZoneZoneSlugRoute
 }
 
 const CampaignsSlugRouteChildren: CampaignsSlugRouteChildren = {
   CampaignsSlugRegisterRoute: CampaignsSlugRegisterRoute,
   CampaignsSlugIndexRoute: CampaignsSlugIndexRoute,
+  CampaignsSlugZoneZoneSlugRoute: CampaignsSlugZoneZoneSlugRoute,
 }
 
 const CampaignsSlugRouteWithChildren = CampaignsSlugRoute._addFileChildren(

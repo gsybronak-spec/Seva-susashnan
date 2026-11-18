@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   Megaphone, Plus, Pencil, Copy, Archive, Trash2, ExternalLink, Upload,
-  CalendarDays, Users, UserCheck, Award,
+  CalendarDays, Users, UserCheck, Award, LayoutDashboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -433,11 +433,14 @@ function CampaignForm({ initial, onDone }: { initial: FormState; onDone: () => v
 }
 
 export function CampaignsManager({
+  onOpenDashboard,
   onOpenEvents,
   onOpenParticipants,
   onOpenCheckin,
   onOpenCertificates,
 }: {
+  /** Open dedicated campaign dashboard */
+  onOpenDashboard?: (campaignId: string) => void;
   /** Drill into this campaign's events (Events tab, filtered). */
   onOpenEvents?: (campaignId: string) => void;
   /** Drill into this campaign's participants (Dashboard tab, filtered). */
@@ -558,7 +561,12 @@ export function CampaignsManager({
               {campaigns.map((c) => (
                 <tr key={c.id} className="border-b border-border/60 last:border-0">
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-foreground">{c.name}</div>
+                    <div
+                      className="font-semibold text-foreground hover:text-brand-primary cursor-pointer transition-colors"
+                      onClick={() => onOpenDashboard?.(c.id)}
+                    >
+                      {c.name}
+                    </div>
                     {c.slogan && <div className="text-xs text-muted-foreground">{c.slogan}</div>}
                   </td>
                   <td className="px-4 py-3">
@@ -584,6 +592,18 @@ export function CampaignsManager({
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{c.slug}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap justify-end gap-1">
+                      {onOpenDashboard && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2 text-xs font-semibold bg-primary/5 hover:bg-primary/10 text-primary border-primary/20 gap-1"
+                          title="Open Campaign Dashboard"
+                          onClick={() => onOpenDashboard(c.id)}
+                        >
+                          <LayoutDashboard className="h-3.5 w-3.5" />
+                          Dashboard
+                        </Button>
+                      )}
                       <Button size="sm" variant="ghost" onClick={() => openEdit(c)} title="Edit campaign">
                         <Pencil className="h-4 w-4" />
                       </Button>

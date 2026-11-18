@@ -1236,12 +1236,27 @@ export function getEventRegistrationStatus(
     };
   }
 
-  // 5. Before event start -> check optional registration window
+  // 5. Before event start -> check optional registration window (parsed in Asia/Kolkata +05:30)
+  const parseIST = (val: unknown): number | null => {
+    if (!val || typeof val !== "string") return null;
+    const str = val.trim();
+    if (!str) return null;
+    if (/[Zz]|[+-]\d{2}(:?\d{2})?$/.test(str)) {
+      const ms = Date.parse(str);
+      return Number.isNaN(ms) ? null : ms;
+    }
+    const norm = str.length === 16 ? `${str}:00+05:30` : str.length === 10 ? `${str}T00:00:00+05:30` : `${str}+05:30`;
+    const ms = Date.parse(norm);
+    if (!Number.isNaN(ms)) return ms;
+    const fallback = Date.parse(str);
+    return Number.isNaN(fallback) ? null : fallback;
+  };
+
   const openAtStr = (g as any).registration_open_at;
   const closeAtStr = (g as any).registration_close_at;
   if (openAtStr) {
-    const openAt = new Date(openAtStr).getTime();
-    if (Number.isFinite(openAt) && nowMs < openAt) {
+    const openAt = parseIST(openAtStr);
+    if (openAt !== null && Number.isFinite(openAt) && nowMs < openAt) {
       return {
         isOpen: false,
         status: "closed",
@@ -1252,8 +1267,8 @@ export function getEventRegistrationStatus(
     }
   }
   if (closeAtStr) {
-    const closeAt = new Date(closeAtStr).getTime();
-    if (Number.isFinite(closeAt) && nowMs > closeAt) {
+    const closeAt = parseIST(closeAtStr);
+    if (closeAt !== null && Number.isFinite(closeAt) && nowMs > closeAt) {
       return {
         isOpen: false,
         status: "closed",

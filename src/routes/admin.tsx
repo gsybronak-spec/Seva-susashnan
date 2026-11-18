@@ -39,6 +39,7 @@ import { adminAttendanceSummary } from "@/lib/checkin.functions";
 const EventSettings = lazy(() => import("@/components/admin/event-settings").then(m => ({ default: m.EventSettings })));
 const EventsManager = lazy(() => import("@/components/admin/events-manager").then(m => ({ default: m.EventsManager })));
 const CampaignsManager = lazy(() => import("@/components/admin/campaigns-manager").then(m => ({ default: m.CampaignsManager })));
+const CampaignDashboard = lazy(() => import("@/components/admin/campaign-dashboard").then(m => ({ default: m.CampaignDashboard })));
 const EventOperationsDashboard = lazy(() => import("@/components/admin/event-operations-dashboard").then(m => ({ default: m.EventOperationsDashboard })));
 const CertificateManager = lazy(() => import("@/components/admin/certificate-manager").then(m => ({ default: m.CertificateManager })));
 const UserManager = lazy(() => import("@/components/admin/user-manager").then(m => ({ default: m.UserManager })));
@@ -492,6 +493,7 @@ function Dashboard({
   // Campaigns, downstream tabs (Events/Participants/Check-In/Certificates)
   // scope themselves to that campaign's data.
   const [campaignFilterId, setCampaignFilterId] = useState<string>("");
+  const [selectedCampaignDashboardId, setSelectedCampaignDashboardId] = useState<string | null>(null);
   const [settingsTab, setSettingsTab] = useState<
     "status" | "coverage" | "form" | "partner_form" | "general" | "features" | "attendance" | "certificate" | "referral" | "whatsapp" | "social"
   >("status");
@@ -952,24 +954,33 @@ function Dashboard({
         </TabsList>          {isSuper && (
             <TabsContent value="campaigns" className="mt-4">
               <Suspense fallback={<TabFallback />}>
-                <CampaignsManager
-                  onOpenEvents={(campaignId) => {
-                    setCampaignFilterId(campaignId);
-                    setWorkspaceTab("events");
-                  }}
-                  onOpenParticipants={(campaignId) => {
-                    setCampaignFilterId(campaignId);
-                    setWorkspaceTab("dashboard");
-                  }}
-                  onOpenCheckin={(campaignId) => {
-                    setCampaignFilterId(campaignId);
-                    setWorkspaceTab("checkin");
-                  }}
-                  onOpenCertificates={(campaignId) => {
-                    setCampaignFilterId(campaignId);
-                    setWorkspaceTab("certificates");
-                  }}
-                />
+                {selectedCampaignDashboardId ? (
+                  <CampaignDashboard
+                    campaignId={selectedCampaignDashboardId}
+                    onBack={() => setSelectedCampaignDashboardId(null)}
+                    onManageEvent={(eventId) => openEventFor(eventId, "settings")}
+                  />
+                ) : (
+                  <CampaignsManager
+                    onOpenDashboard={(campaignId) => setSelectedCampaignDashboardId(campaignId)}
+                    onOpenEvents={(campaignId) => {
+                      setCampaignFilterId(campaignId);
+                      setWorkspaceTab("events");
+                    }}
+                    onOpenParticipants={(campaignId) => {
+                      setCampaignFilterId(campaignId);
+                      setWorkspaceTab("dashboard");
+                    }}
+                    onOpenCheckin={(campaignId) => {
+                      setCampaignFilterId(campaignId);
+                      setWorkspaceTab("checkin");
+                    }}
+                    onOpenCertificates={(campaignId) => {
+                      setCampaignFilterId(campaignId);
+                      setWorkspaceTab("certificates");
+                    }}
+                  />
+                )}
               </Suspense>
             </TabsContent>
           )}

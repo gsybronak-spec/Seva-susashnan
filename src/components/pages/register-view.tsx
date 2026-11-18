@@ -28,6 +28,8 @@ export type RegisterViewProps = {
   refCode?: string;
   partnerSlug?: string;
   initialData?: EventConfigInitialData | null;
+  lockedZone?: { id: string; name: string; slug: string; description?: string | null } | null;
+  availableZones?: Array<{ id: string; name: string; slug: string; description?: string | null }> | null;
 };
 
 export const GUJARAT_DISTRICTS = [
@@ -72,6 +74,8 @@ export function RegisterView({
   refCode,
   partnerSlug,
   initialData,
+  lockedZone,
+  availableZones,
 }: RegisterViewProps) {
   const ref = refCode ?? "";
   const initialPartner = partnerSlug ? partnerSlug.trim().toUpperCase() : "";
@@ -431,6 +435,12 @@ export function RegisterView({
       }
     }
 
+    if (availableZones && availableZones.length > 0 && !lockedZone) {
+      if (!formValues.zone_id && !formValues.zone) {
+        errors.zone = "કૃપા કરીને આપનો ઝોન પસંદ કરો (Please select a zone).";
+      }
+    }
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -522,7 +532,9 @@ export function RegisterView({
     if (formValues.participant_type) {
       custom_fields.participant_type = formValues.participant_type;
     }
-    if (formValues.zone) {
+    if (lockedZone?.name) {
+      custom_fields.zone = lockedZone.name;
+    } else if (formValues.zone) {
       custom_fields.zone = formValues.zone;
     }
     if (formValues.coach_name) {
@@ -531,6 +543,9 @@ export function RegisterView({
     if (formValues.coordinator_name) {
       custom_fields.coordinator_name = formValues.coordinator_name;
     }
+
+    const zoneId = lockedZone?.id || (formValues.zone_id ? String(formValues.zone_id) : undefined);
+    const zoneSlug = lockedZone?.slug || (formValues.zone_slug ? String(formValues.zone_slug) : undefined);
 
     setSubmitting(true);
     try {
@@ -548,6 +563,8 @@ export function RegisterView({
           partner_slug: partnerInfo ? partnerInfo.slug : undefined,
           district_slug: eventSlug || undefined,
           district_id: selectedDistrictId,
+          zone_id: zoneId,
+          zone_slug: zoneSlug,
           custom_fields: Object.keys(custom_fields).length ? custom_fields : undefined,
         },
       });
@@ -814,6 +831,57 @@ export function RegisterView({
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Locked Zone Card */}
+                {lockedZone && (
+                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 text-xs text-emerald-900 flex items-center justify-between shadow-xs animate-in fade-in">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0F3E3E] text-white font-bold text-sm">
+                        📍
+                      </span>
+                      <div>
+                        <span className="block text-[11px] font-semibold text-emerald-800">નિયત ઝોન / Designated Zone</span>
+                        <strong className="text-sm font-bold text-[#0F3E3E]">{lockedZone.name}</strong>
+                        {lockedZone.description && (
+                          <span className="block text-[11px] text-emerald-700">{lockedZone.description}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+                      🔒 Locked
+                    </span>
+                  </div>
+                )}
+
+                {/* Available Zones Dropdown if not locked */}
+                {!lockedZone && availableZones && availableZones.length > 0 && (
+                  <div className="space-y-1.5 p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200">
+                    <label className="text-xs font-semibold text-[#0F3E3E] flex items-center justify-between">
+                      <span>ઝોન પસંદ કરો (Select Zone) <span className="text-[#D97706] font-bold">*</span></span>
+                      {formErrors.zone && <span className="text-xs text-destructive">{formErrors.zone}</span>}
+                    </label>
+                    <select
+                      value={formValues.zone_id || ""}
+                      onChange={(e) => {
+                        const selected = availableZones.find((z) => z.id === e.target.value);
+                        setFormValues((prev) => ({
+                          ...prev,
+                          zone_id: selected?.id || "",
+                          zone_slug: selected?.slug || "",
+                          zone: selected?.name || "",
+                        }));
+                      }}
+                      className="w-full h-11 px-3 rounded-xl border border-input bg-white text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#0F3E3E]/20"
+                    >
+                      <option value="">-- ઝોન પસંદ કરો (Select Zone) --</option>
+                      {availableZones.map((z) => (
+                        <option key={z.id} value={z.id}>
+                          {z.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <DynamicFormRenderer
                   fields={fields}
                   values={formValues}
