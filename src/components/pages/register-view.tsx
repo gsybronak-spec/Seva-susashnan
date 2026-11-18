@@ -435,12 +435,6 @@ export function RegisterView({
       }
     }
 
-    if (availableZones && availableZones.length > 0 && !lockedZone) {
-      if (!formValues.zone_id && !formValues.zone) {
-        errors.zone = "કૃપા કરીને આપનો ઝોન પસંદ કરો (Please select a zone).";
-      }
-    }
-
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -856,8 +850,7 @@ export function RegisterView({
                 {!lockedZone && availableZones && availableZones.length > 0 && (
                   <div className="space-y-1.5 p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-200">
                     <label className="text-xs font-semibold text-[#0F3E3E] flex items-center justify-between">
-                      <span>ઝોન પસંદ કરો (Select Zone) <span className="text-[#D97706] font-bold">*</span></span>
-                      {formErrors.zone && <span className="text-xs text-destructive">{formErrors.zone}</span>}
+                      <span>ઝોન પસંદ કરો (Select Zone - વૈકલ્પિક / Optional)</span>
                     </label>
                     <select
                       value={formValues.zone_id || ""}
