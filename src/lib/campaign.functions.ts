@@ -1018,21 +1018,23 @@ export const loadCampaignZoneRegistrationData = createServerFn({ method: "POST" 
         return { ok: false as const, error: `Registration for ${zone.name} is currently disabled.` };
       }
 
-      // Fetch primary event (foundational/first created event, canonical yog-sneh-milan-2026 for Sneh Milan)
+      // Fetch active primary event
       const { data: ev } = await supabaseAdmin
         .from("events")
-        .select("id, slug, general, publish_status, lifecycle_status, features, created_at")
+        .select("id, slug, general, publish_status, lifecycle_status, features, created_at, event_date, event_time")
         .eq("campaign_id", c.id)
         .order("created_at", { ascending: true });
 
       const events = (ev ?? []) as unknown as Array<{
         id: string;
         slug: string;
-        general: { title?: string } | null;
+        general: { title?: string; event_date?: string; event_time?: string; start_time?: string; end_time?: string } | null;
         publish_status: string;
         lifecycle_status: string;
         features: { registration?: boolean } | null;
         created_at: string;
+        event_date?: string | null;
+        event_time?: string | null;
       }>;
 
       const publishedEvents = events.filter(
@@ -1046,9 +1048,16 @@ export const loadCampaignZoneRegistrationData = createServerFn({ method: "POST" 
         return { ok: false as const, error: "No open events under this campaign right now." };
       }
 
+      const { isEventCompleted } = await import("@/lib/event-config");
+      const nowMs = Date.now();
+      const activeUpcomingEvents = publishedEvents.filter(
+        (e) => e.lifecycle_status !== "completed" && !isEventCompleted(e as any, nowMs),
+      );
+
       const event =
-        publishedEvents.find((e) => e.slug === "yog-sneh-milan-2026") ??
-        publishedEvents[0];
+        activeUpcomingEvents.find((e) => e.slug === "yog-sneh-milan-2026") ??
+        activeUpcomingEvents[0] ??
+        publishedEvents[publishedEvents.length - 1];
 
       const { resolveEvent } = await import("@/lib/event-resolver.server");
       const resolved = await resolveEvent(event.slug);

@@ -33,10 +33,15 @@ export function SuccessView({
     registrationNumber: reg,
   });
 
-  const registerPath = isSnehMilan
-    ? "/campaigns/snehmilan/register"
-    : eventSlug
-      ? `/${eventSlug}/register`
+  // Dedicated registration link for the specific event the participant registered for.
+  // For yog-sneh-milan-2 (23 Nov) or any other specific event, target that event's register route.
+  // For yog-sneh-milan-2026 / snehmilan, route to /campaigns/snehmilan/register.
+  const registerPath = eventSlug
+    ? (isSnehMilan && (eventSlug === "yog-sneh-milan-2026" || eventSlug === "snehmilan")
+        ? "/campaigns/snehmilan/register"
+        : `/${eventSlug}/register`)
+    : isSnehMilan
+      ? "/campaigns/snehmilan/register"
       : "/register";
 
   const [shareUrl, setShareUrl] = useState(`${registerPath}?ref=${reg}`);

@@ -38,11 +38,14 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
     z.object({
       slug: z.string().trim().min(1).max(80).toLowerCase(),
       eventSlug: z.string().trim().max(80).optional(),
+      ref: z.string().trim().max(40).optional(),
     }).parse(input),
   )
   .handler(async ({ data }) => {
     try {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { isEventCompleted } = await import("@/lib/event-config");
+
       const { data: campaign } = await supabaseAdmin
         .from("campaigns")
         .select("id, name, slug, publish_status, registration_status")
@@ -58,17 +61,19 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
       // Load campaign events ordered from earliest created to latest
       const { data: ev } = await supabaseAdmin
         .from("events")
-        .select("id, slug, general, publish_status, lifecycle_status, features, created_at")
+        .select("id, slug, general, publish_status, lifecycle_status, features, created_at, event_date, event_time")
         .eq("campaign_id", c.id)
         .order("created_at", { ascending: true });
       const events = (ev ?? []) as unknown as Array<{
         id: string;
         slug: string;
-        general: { title?: string } | null;
+        general: { title?: string; event_date?: string; event_time?: string; start_time?: string; end_time?: string } | null;
         publish_status: string;
         lifecycle_status: string;
         features: { registration?: boolean } | null;
         created_at: string;
+        event_date?: string | null;
+        event_time?: string | null;
       }>;
       const publishedEvents = events.filter(
         (e) =>
@@ -80,16 +85,46 @@ const loadCampaignRegistrationData = createServerFn({ method: "POST" })
         return { ok: false as const, error: "No open events under this campaign right now." };
       }
 
-      // If a specific eventSlug was requested, resolve that event
+      const nowMs = Date.now();
+      // Partition into active upcoming events vs completed events
+      const activeUpcomingEvents = publishedEvents.filter(
+        (e) => e.lifecycle_status !== "completed" && !isEventCompleted(e as any, nowMs),
+      );
+
+      // Strategy 1: Explicitly requested event via ?event=slug
       let event = data.eventSlug
         ? publishedEvents.find((e) => e.slug.toLowerCase() === data.eventSlug?.toLowerCase())
         : null;
 
-      // Otherwise, Yog Sneh Milan defaults to the canonical primary event 'yog-sneh-milan-2026'
-      if (!event) {
+      // Strategy 2: Referral code lookup — resolve to the exact event of the referrer!
+      if (!event && data.ref) {
+        const { data: refParticipant } = await supabaseAdmin
+          .from("registrations")
+          .select("event_id, events(id, slug, publish_status, lifecycle_status)")
+          .ilike("registration_number", data.ref.trim())
+          .maybeSingle();
+
+        const refEventSlug = (refParticipant?.events as any)?.slug;
+        if (refEventSlug) {
+          const matched = publishedEvents.find((e) => e.slug === refEventSlug);
+          if (matched) {
+            event = matched;
+          }
+        }
+      }
+
+      // Strategy 3: Next active upcoming event under the campaign
+      if (!event && activeUpcomingEvents.length > 0) {
+        // If the founding event (yog-sneh-milan-2026) is active and upcoming, it is selected.
+        // Once it completes, the next upcoming event (yog-sneh-milan-2, etc.) is automatically selected!
         event =
-          publishedEvents.find((e) => e.slug === "yog-sneh-milan-2026") ??
-          publishedEvents[0];
+          activeUpcomingEvents.find((e) => e.slug === "yog-sneh-milan-2026") ??
+          activeUpcomingEvents[0];
+      }
+
+      // Strategy 4: Fallback to earliest/latest published event if all are completed
+      if (!event) {
+        event = publishedEvents[publishedEvents.length - 1] ?? publishedEvents[0];
       }
 
       if (!event) {
@@ -153,8 +188,8 @@ function CampaignRegisterPage() {
   const { ref, partner, zone, event: eventParam } = Route.useSearch();
   const load = useServerFn(loadCampaignRegistrationData);
   const { data, isLoading } = useQuery({
-    queryKey: ["campaign-register", slug, eventParam],
-    queryFn: () => load({ data: { slug, eventSlug: eventParam } }),
+    queryKey: ["campaign-register", slug, eventParam, ref],
+    queryFn: () => load({ data: { slug, eventSlug: eventParam, ref } }),
   });
 
   if (isLoading) {
