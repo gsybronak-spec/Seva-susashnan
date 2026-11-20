@@ -101,6 +101,7 @@ export function CampaignDashboard({ campaignId, onBack, onManageEvent }: Campaig
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [eventTitle, setEventTitle] = useState("");
   const [eventSlug, setEventSlug] = useState("");
+  const [eventPrefix, setEventPrefix] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventStartTime, setEventStartTime] = useState("");
   const [eventEndTime, setEventEndTime] = useState("");
@@ -165,6 +166,7 @@ export function CampaignDashboard({ campaignId, onBack, onManageEvent }: Campaig
           campaignId,
           title: eventTitle.trim(),
           slug: eventSlug.trim() || undefined,
+          reg_prefix: eventPrefix.trim() || undefined,
           event_date: eventDate || undefined,
           start_time: eventStartTime || undefined,
           end_time: eventEndTime || undefined,
@@ -244,6 +246,7 @@ export function CampaignDashboard({ campaignId, onBack, onManageEvent }: Campaig
     setEditingEventId(null);
     setEventTitle("");
     setEventSlug("");
+    setEventPrefix("");
     setEventDate("");
     setEventStartTime("");
     setEventEndTime("");
@@ -896,6 +899,7 @@ export function CampaignDashboard({ campaignId, onBack, onManageEvent }: Campaig
                                 setEditingEventId(ev.id);
                                 setEventTitle(ev.general?.title || ev.slug);
                                 setEventSlug(ev.slug);
+                                setEventPrefix(ev.reg_prefix || "");
                                 setEventDate(ev.event_date || "");
                                 const times = (ev.event_time || "").split("-");
                                 setEventStartTime(times[0]?.trim() || "");
@@ -1267,6 +1271,26 @@ export function CampaignDashboard({ campaignId, onBack, onManageEvent }: Campaig
                 />
                 <span>/register</span>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">
+                Registration Prefix / નોંધણી ક્રમાંક Prefix (Optional)
+              </Label>
+              <Input
+                placeholder={isSnehMilan ? "e.g. YSM2026-3- (Auto-generated if left empty)" : "Auto-generated if left empty"}
+                value={eventPrefix}
+                onChange={(e) => setEventPrefix(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""))}
+                className="font-mono text-xs"
+                disabled={Boolean(editingEventId)}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {editingEventId
+                  ? "Registration prefix cannot be changed once an event is created."
+                  : isSnehMilan
+                    ? "Leave empty to automatically assign the next unique Yog Sneh Milan prefix (e.g. YSM2026-2-, YSM2026-3-). Format: YSM2026-XXXXXX."
+                    : "Leave empty to automatically generate a unique prefix. Each event receives its own independent sequence."}
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

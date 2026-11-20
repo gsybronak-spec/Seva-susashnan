@@ -1133,7 +1133,7 @@ export const adminAddEventToCampaign = createServerFn({ method: "POST" })
       end_time: z.string().trim().optional(),
       venue: z.string().trim().max(300).optional(),
       description: z.string().trim().max(2000).optional(),
-      reg_prefix: z.string().trim().max(10).optional(),
+      reg_prefix: z.string().trim().max(25).optional(),
       publish_status: z.enum(["published", "draft"]).default("published"),
     }).parse(input)
   )
@@ -1180,7 +1180,57 @@ export const adminAddEventToCampaign = createServerFn({ method: "POST" })
       campaignName: campaign.name,
     });
 
-    const prefix = data.reg_prefix || (isSneh ? "YSM2026" : (campaign.slug.slice(0, 4).toUpperCase().replace(/[^A-Z]/g, "") || "EVT"));
+    // Query all existing prefixes across all events to guarantee 100% collision-free uniqueness
+    const { data: existingEvents } = await supabaseAdmin
+      .from("events")
+      .select("reg_prefix")
+      .not("reg_prefix", "is", null);
+
+    const takenPrefixes = new Set(
+      (existingEvents || []).map((e: { reg_prefix: string | null }) => (e.reg_prefix || "").trim().toLowerCase())
+    );
+
+    let prefix = "";
+    if (data.reg_prefix && data.reg_prefix.trim()) {
+      let candidate = data.reg_prefix.trim().toUpperCase();
+      if (!candidate.endsWith("-")) candidate = `${candidate}-`;
+      let attempt = 2;
+      while (
+        takenPrefixes.has(candidate.toLowerCase()) ||
+        takenPrefixes.has(candidate.replace(/-+$/, "").toLowerCase())
+      ) {
+        candidate = `${data.reg_prefix.trim().toUpperCase().replace(/-+$/, "")}-${attempt}-`;
+        attempt++;
+      }
+      prefix = candidate;
+    } else if (isSneh) {
+      let eventNum = 1;
+      while (true) {
+        const candidate = eventNum === 1 ? "YSM2026-" : `YSM2026-${eventNum}-`;
+        if (
+          !takenPrefixes.has(candidate.toLowerCase()) &&
+          !takenPrefixes.has(candidate.replace(/-+$/, "").toLowerCase())
+        ) {
+          prefix = candidate;
+          break;
+        }
+        eventNum++;
+      }
+    } else {
+      const base = campaign.slug.slice(0, 4).toUpperCase().replace(/[^A-Z]/g, "") || "EVT";
+      let eventNum = 1;
+      while (true) {
+        const candidate = eventNum === 1 ? `${base}-` : `${base}-${eventNum}-`;
+        if (
+          !takenPrefixes.has(candidate.toLowerCase()) &&
+          !takenPrefixes.has(candidate.replace(/-+$/, "").toLowerCase())
+        ) {
+          prefix = candidate;
+          break;
+        }
+        eventNum++;
+      }
+    }
     const timeDisplay = data.start_time
       ? data.end_time
         ? `${data.start_time} - ${data.end_time}`
@@ -1301,6 +1351,10 @@ export const adminAddEventToCampaign = createServerFn({ method: "POST" })
       .single();
 
     if (error) return { ok: false as const, error: error.message };
+    try {
+      const { invalidatePublicEventCache } = await import("@/lib/event-resolver.server");
+      invalidatePublicEventCache();
+    } catch {}
     return { ok: true as const, event: newEvent };
   });
 
@@ -1336,6 +1390,10 @@ export const adminDeleteCampaignEvent = createServerFn({ method: "POST" })
         .eq("campaign_id", data.campaignId);
 
       if (archErr) return { ok: false as const, error: archErr.message };
+      try {
+        const { invalidatePublicEventCache } = await import("@/lib/event-resolver.server");
+        invalidatePublicEventCache();
+      } catch {}
       return { ok: true as const, archived: true, message: `Event has ${count} existing registrations, so it was safely archived.` };
     }
 
@@ -1346,6 +1404,10 @@ export const adminDeleteCampaignEvent = createServerFn({ method: "POST" })
       .eq("campaign_id", data.campaignId);
 
     if (error) return { ok: false as const, error: error.message };
+    try {
+      const { invalidatePublicEventCache } = await import("@/lib/event-resolver.server");
+      invalidatePublicEventCache();
+    } catch {}
     return { ok: true as const, archived: false, message: "Event deleted successfully." };
   });
 
@@ -1423,5 +1485,9 @@ export const adminUpdateCampaignEvent = createServerFn({ method: "POST" })
       .eq("campaign_id", data.campaignId);
 
     if (updErr) return { ok: false as const, error: updErr.message };
+    try {
+      const { invalidatePublicEventCache } = await import("@/lib/event-resolver.server");
+      invalidatePublicEventCache();
+    } catch {}
     return { ok: true as const, message: "Event updated successfully." };
   });
